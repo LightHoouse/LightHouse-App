@@ -8,9 +8,9 @@ A small lab companion that turns an assistant's demonstration into guidance on a
 
 1. **Assistant:** enter your name, create a group, and share its code.
 2. Click **Record** on the floating toolbar, then demonstrate across your applications.
-3. Use **Pause / Resume** as needed, then **Stop** to save the session. No manual step notes are needed.
+3. Use **Pause / Resume** as needed, then **Stop** to end the session. Steps sync automatically, without per-step save dialogs. No manual step notes are needed.
 4. **Student:** join with your name and the group code. Lighthouse stays beside your cursor.
-5. Press **Alt+L** while working to open chat beside your mouse. Ask a question; Lighthouse uses the active application and the latest group recording to highlight a matching control. You perform the action yourself.
+5. Press **Alt+L** to open a small purple input beside your mouse. It grows with the text; **Enter** sends and **Escape** closes. Answers stream into a compact card after you ask. Ask a question; Lighthouse uses the active application and the latest group recording to highlight a matching control. You perform the action yourself.
 
 No MQTT, database, or AI credentials are needed in the installer. HTTPS connects to `lighthouse-be.yanzz.dev`; the backend owns group membership and AI access. Student questions and visible control names are sent to the service. Typed contents and password fields are not recorded. Membership is encrypted locally using Electron safeStorage and Windows protection. Groups expire after seven days.
 
@@ -56,3 +56,5 @@ Set `LIGHTHOUSE_E2E_BACKEND_DIR` if the backend checkout is elsewhere. `LIGHTHOU
 ## Releases
 
 Push a `vX.Y.Z` tag matching `package.json` after adding `docs/releases/X.Y.Z.md`. CI checks the source, records and resolves real native controls with two clients, packages the app, and repeats the test against the packaged executable. Only that tested installer is published, with `release-manifest.json` and `SHA256SUMS.txt`. Branch builds create artifacts without publishing releases. There is no automatic updater yet.
+
+Typography uses bundled [DM Sans](https://fonts.google.com/specimen/DM+Sans), licensed under the [SIL Open Font License](src/ui/fonts/OFL.txt). Cursor styling is inspired by [Clicky](https://github.com/farzaa/clicky).

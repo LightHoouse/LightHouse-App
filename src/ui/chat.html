@@ -1,3 +1,10 @@
-<!doctype html><html lang="id"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'"><title>Lighthouse Chat</title><link rel="stylesheet" href="style.css"></head><body class="floating"><section class="chat-shell"><header class="chat-header"><i class="brand"></i><div><strong>Lighthouse</strong><span id="context">Di sampingmu</span></div><button id="close" class="icon" aria-label="Tutup chat">×</button></header>
-<div id="messages" aria-live="polite"><div id="empty"><span class="little-star">✦</span><h1>Ada yang bikin<br>bingung?</h1><p>Tanya di sini. Kita lanjut bareng.</p></div></div>
-<div class="chat-bottom"><button id="next" class="next-button" hidden>Lanjut langkah berikutnya ↗</button><form id="ask-form"><textarea id="question" aria-label="Pertanyaan" placeholder="Tanya apa saja tentang praktikummu…" rows="2" maxlength="1000"></textarea><div class="composer-bottom"><span><i class="context-dot"></i> Konteks aplikasi aktif</span><button id="send" type="submit" aria-label="Kirim pertanyaan">↑</button></div></form><div class="chat-foot"><span>Jawaban dari sesi asisten</span><button id="dismiss">Esc untuk tutup</button></div></div></section><script src="chat.js"></script></body></html>
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'"><title>Lighthouse Chat</title><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="chat.css"></head>
+<body class="floating compact">
+<section class="cursor-chat">
+<form id="ask-form" class="ask-pill">
+<textarea id="question" aria-label="Pertanyaan" placeholder="Tanya sesuatu..." rows="1" maxlength="1000"></textarea>
+<button id="send" class="sr-only" type="submit" aria-label="Kirim pertanyaan">Kirim</button>
+</form>
+<div class="reply-card"><div class="reply-heading"><span>Lighthouse</span><span id="context"></span></div><div id="messages" aria-live="polite" role="log"></div></div>
+</section><script src="chat.js"></script></body></html>

@@ -74,17 +74,26 @@ test('cursor-first session: full recording, role isolation, Alt+L context, live 
   await expect.poll(()=>s.evaluate(()=>window.lighthouse.state().then(s=>({triggered:s.hotkeyAt>0,error:s.chatError})))).toEqual({triggered:true,error:''});
   await expect.poll(()=>student.application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Chat').isVisible())).toBe(true);
   await expect(c.locator('#context')).toHaveText('LighthouseFixture');await expect(c.locator('#question')).toBeFocused();
+  await expect(c.locator('body')).toHaveClass(/compact/);
+  await expect(c.locator('.reply-card')).toBeHidden();
+  await c.screenshot({path:'test-results/cursor-pill.png'});
+  await c.locator('#question').fill('te');
+  await expect.poll(()=>c.locator('#ask-form').evaluate(el=>el.getBoundingClientRect().width)).toBeLessThan(60);
+  await c.screenshot({path:'test-results/cursor-pill-typed.png'});
+  await c.locator('#question').fill('Bagaimana langkah selanjutnya?');
+  await expect.poll(()=>c.locator('#ask-form').evaluate(el=>el.getBoundingClientRect().width)).toBeGreaterThan(150);
   const pos=await student.application.evaluate(()=>globalThis.chatOpeningPosition);
   expect(pos.bounds.x).toBeGreaterThanOrEqual(pos.area.x);expect(pos.bounds.x+pos.bounds.width).toBeLessThanOrEqual(pos.area.x+pos.area.width);expect(Math.abs(pos.bounds.x-pos.cursor.x)).toBeLessThan(400);
-  await c.locator('#question').fill(process.env.LIGHTHOUSE_E2E_URL?'Bagaimana caranya menyimpan dokumen saya?':'Simpan');await c.locator('#send').click();
+  await c.locator('#question').fill(process.env.LIGHTHOUSE_E2E_URL?'Bagaimana caranya menyimpan dokumen saya?':'Simpan');await c.locator('#question').press('Enter');
   await expect(c.locator('.target-found')).toBeVisible({timeout:70000});if(process.env.LIGHTHOUSE_E2E_URL)await expect(c.locator('.message.assistant').last()).toHaveAttribute('data-source','ai');
+  if(process.env.LIGHTHOUSE_E2E_URL){expect(Number(await c.locator('.message.assistant').last().getAttribute('data-deltas'))).toBeGreaterThan(0);await expect(c.locator('.message.assistant').last()).toHaveAttribute('data-streaming','false');}
   const marker=await student.application.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Highlight');return {visible:w.isVisible(),bounds:w.getBounds()};});expect(marker.visible).toBe(true);expect(marker.bounds.x).toBeGreaterThan(500);
   await c.screenshot({path:'test-results/cursor-chat.png'});await bar.screenshot({path:'test-results/recorder-toolbar.png'});
   await c.keyboard.press('Escape');expect(await student.application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Chat').isVisible())).toBe(false);
   drive('hide',target.handle);drive('hide',other.handle);drive('hide',copy.handle);drive('focus',copy.handle);drive('hotkey','0');await expect(c.locator('#question')).toBeFocused();
-  await c.locator('#question').fill('Simpan');await c.locator('#send').click();await expect(c.locator('.message.assistant').last()).not.toHaveClass(/pending/,{timeout:70000});
+  await c.locator('#question').fill('Simpan');await c.locator('#question').press('Enter');await expect(c.locator('.message.assistant').last()).not.toHaveClass(/pending/,{timeout:70000});
   expect(await student.application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Highlight').isVisible())).toBe(false);
   await bar.locator('#group').click();await expect(a.locator('#group-code')).toHaveText(code);a.once('dialog',d=>d.accept());await a.locator('#close-group').click();await expect(a.locator('#welcome')).toBeVisible();
-  await c.locator('#question').fill('Simpan');await c.locator('#send').click();await expect(c.locator('.message.failed').last()).toContainText('ditutup');
+  await c.locator('#question').fill('Simpan');await c.locator('#question').press('Enter');await expect(c.locator('.message.failed').last()).toContainText('ditutup');
  }finally{for(const client of [owner,student]){const p=client.application.process();if(p.exitCode===null)try{execFileSync('taskkill',['/pid',String(p.pid),'/t','/f'],{stdio:'ignore'});}catch{}}target?.child.kill();other?.child.kill();copy?.child.kill();}
 });

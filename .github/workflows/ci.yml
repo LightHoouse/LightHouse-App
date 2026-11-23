@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: LightHoouse/LightHosue-Backend
-          ref: de38116719d6d40b499fa4278f823a0b31827ca8
+          ref: 821853b86a71e795c2cf0d65a21779b70fe4d8ab
           path: backend-test
       - name: Prepare isolated backend for desktop E2E
         run: |
