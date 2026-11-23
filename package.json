@@ -27,6 +27,12 @@
       "dist/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "native/bin/LighthouseBridge.exe",
+        "to": "native/LighthouseBridge.exe"
+      }
+    ],
     "win": {
       "target": [
         "nsis"
@@ -40,7 +46,7 @@
       "output": "release"
     }
   },
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Lighthouse guide cursor for computer labs",
   "author": "Lighthouse Team"
 }

@@ -1,75 +1,58 @@
 # Lighthouse Desktop 🔦
 
-A desktop companion that helps students follow computer lab tasks at their own pace.
+A small lab companion that turns an assistant's demonstration into guidance on a student's own screen.
 
-[Download for Windows](https://github.com/LightHoouse/LightHouse-App/releases) · [Backend](https://github.com/LightHoouse/LightHosue-Backend) · [Organization](https://github.com/LightHoouse)
+[Download for Windows](https://github.com/LightHoouse/LightHouse-App/releases/latest) · [Backend](https://github.com/LightHoouse/LightHosue-Backend) · [AI service](https://github.com/LightHoouse/LightHouse-AI)
 
-![CI](https://github.com/LightHoouse/LightHouse-App/actions/workflows/ci.yml/badge.svg)
+## Use it
 
-## What it includes
+1. **Assistant:** enter your name, create a group, and share its code.
+2. Open the application you want to demonstrate. Select its window in Lighthouse, name the recording, and click **Record**.
+3. Work in that window. Use **Pause / Resume** as needed, then **Stop / Simpan** to finish uploading.
+4. **Student:** join using your name and the group code. Select the recording and your own application window.
+5. Ask a question or choose **Langkah berikutnya**. Lighthouse finds the recorded control in your live window and highlights it for eight seconds. You perform the action yourself.
 
-- A visible desktop control panel with a guide demo and dismiss button.
-- A click-through overlay that leaves the student's mouse and keyboard under their control.
-- MQTT text commands (`say`), TLS verification, and delivery acknowledgments.
-- Validation of command scope and expiry, plus deduplication within one running process.
+No MQTT, database, or AI credentials are needed in the installer. HTTPS connects to `lighthouse-be.yanzz.dev`; the backend owns group membership and AI access. Student questions and visible control names are sent to the service. Typed contents and password fields are not recorded. Membership is encrypted locally using Electron safeStorage and Windows protection. Groups expire after seven days.
 
-**Prototype status:** live UIA/CDP locator resolution, action recording, step verification, and the classroom dashboard are not implemented. Pointer commands fail explicitly instead of guessing coordinates. Deduplication does not survive restarts.
+## What works
 
-## Download
+- Create/join groups with assistant and student roles.
+- Native Windows UI Automation recording of accessible targets, mouse clicks, typing events without text, and scroll events.
+- Sequential guidance and AI selection from the group's recorded steps.
+- Live target resolution by AutomationId or control type/name, including relocated windows.
+- Explicit failure for ambiguous or missing targets; a click-through highlight never takes control of input.
+- Source and packaged two-client E2E tests against a real MongoDB test instance and a separate native Windows target.
 
-Open [Releases](https://github.com/LightHoouse/LightHouse-App/releases), choose a version, and download its `.exe`. `SHA256SUMS.txt` contains the installer checksum. Windows installers are currently unsigned. The control panel and demo work without MQTT configuration.
+This is a Windows prototype. Custom-drawn controls, elevated apps, complex menus, and browser DOM locators are not covered. The app does not execute actions or verify task completion. Recording buffers do not survive a process crash. The installer is unsigned.
 
-## Stack
+## Development
 
-Electron · TypeScript · MQTT.js · electron-builder (NSIS) · Playwright
-
-## Local setup
-
-Requires Node.js 22+ and Windows for the desktop tests and installer build.
+Requires Windows x64, Node.js 22+, and the .NET Framework 4.x compiler/UI Automation assemblies included with supported Windows installations.
 
 ```powershell
 npm ci
 npm run dev
 ```
 
-## Configuration
+The build compiles `native/Bridge.cs` into a helper shipped alongside Electron. The UI runs in a sandboxed renderer; API credentials and native process control stay in the main process.
 
-Set these on the Electron process when connecting to a lab broker. Credentials are not included in the installer.
-
-| Variable | Purpose |
-| --- | --- |
-| `MQTT_URL` | TLS broker URL beginning with `mqtts://` |
-| `MQTT_USERNAME`, `MQTT_PASSWORD` | Broker credentials for the client |
-| `MQTT_CA_CERT` | Optional trusted PEM certificate for a private or self-signed broker |
-| `LIGHTHOUSE_SESSION_ID` | Lab session identifier |
-| `LIGHTHOUSE_STUDENT_ID` | Student/client identifier |
-
-The client receives `lab/{sessionId}/student/{studentId}/cmd` and publishes to the corresponding `/ack` topic. TLS verification stays enabled. Session and student IDs must not contain MQTT topic separators or wildcards.
+Optional process configuration: `LIGHTHOUSE_BACKEND_URL` selects an HTTPS backend (localhost HTTP is allowed for development). `LIGHTHOUSE_PROFILE_DIR` gives a separate encrypted membership profile, useful for testing two clients on one machine.
 
 ## Verification
 
+Clone the backend beside this repo, install its dependencies, and build it first. Tests start an isolated MongoDB instance and backend; they never need production credentials.
+
 ```powershell
-npm run check
+npm --prefix ../backend ci
+npm --prefix ../backend run build
 npm test
 npm run package
 $env:LIGHTHOUSE_TEST_EXE = "$pwd/release/win-unpacked/Lighthouse.exe"
 npx playwright test
 ```
 
-The smoke test opens the actual Electron panel, checks its sandboxed preload, displays the guide, checks the overlay text, and dismisses it. This verifies desktop behavior, not the full classroom workflow.
+Set `LIGHTHOUSE_E2E_BACKEND_DIR` if the backend checkout is elsewhere. `LIGHTHOUSE_E2E_URL` explicitly selects a deployed backend for a live AI E2E trial. The test creates and closes its own group. Native input tests temporarily use the desktop, so avoid interacting during the test.
 
 ## Releases
 
-Pull requests, pushes to `master`, and manual runs build and test Windows artifacts. Push a `vX.Y.Z` tag matching `package.json` to publish a release after source and packaged-executable tests pass. Add notes at `docs/releases/X.Y.Z.md` before tagging. The release uses the exact tested artifact and includes the installer, `release-manifest.json`, and `SHA256SUMS.txt`.
-
-Published versions use `vX.Y.Z`; branch artifacts use `<package-version>-ci.<run-number>.<attempt>`. There is no automatic updater yet. Local installers are written to `release/`.
-
-## Project layout
-
-```text
-src/main.ts       Desktop windows and MQTT delivery
-src/preload.cts   Sandboxed CommonJS bridge
-src/ui/           Control panel and guide presentation
-scripts/build.mjs Clean TypeScript build and UI assets
-smoke.spec.mjs    Source and packaged-app smoke test
-```
+Push a `vX.Y.Z` tag matching `package.json` after adding `docs/releases/X.Y.Z.md`. CI checks the source, records and resolves real native controls with two clients, packages the app, and repeats the test against the packaged executable. Only that tested installer is published, with `release-manifest.json` and `SHA256SUMS.txt`. Branch builds create artifacts without publishing releases. There is no automatic updater yet.

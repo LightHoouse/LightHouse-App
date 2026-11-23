@@ -26,6 +26,8 @@ jobs:
   package:
     needs: verify
     runs-on: windows-latest
+    env:
+      LIGHTHOUSE_E2E_BACKEND_DIR: backend-test
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -35,6 +37,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - uses: actions/checkout@v4
+        with:
+          repository: LightHoouse/LightHosue-Backend
+          ref: 98c8316
+          path: backend-test
+      - name: Prepare isolated backend for desktop E2E
+        run: |
+          npm --prefix backend-test ci
+          npm --prefix backend-test run build
       - name: Set and validate release version
         id: version
         shell: pwsh
@@ -66,7 +77,7 @@ jobs:
             platform = 'windows-x64'
             electron = (node -p "require('./node_modules/electron/package.json').version")
             workflow = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
-            verification = @('typecheck', 'source-smoke', 'packaged-executable-smoke')
+            verification = @('typecheck', 'two-client-source-e2e', 'two-client-packaged-e2e', 'native-uia-record-and-resolve')
           } | ConvertTo-Json | Set-Content -Encoding utf8 release/release-manifest.json
           Get-ChildItem release/*.exe,release/release-manifest.json | ForEach-Object {
             $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
