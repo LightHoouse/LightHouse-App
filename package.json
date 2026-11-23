@@ -6,7 +6,7 @@
     "dev": "electron .",
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "package": "npm run build && electron-builder --win nsis"
+    "package": "npm run build && electron-builder --win nsis --publish never"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
