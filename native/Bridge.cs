@@ -33,6 +33,32 @@ class Bridge {
   static bool ShortcutDown;
   static Queue<Tuple<int,MouseData,IntPtr>> Pending=new Queue<Tuple<int,MouseData,IntPtr>>();
   static bool RecordAll;
+  static volatile bool StopRequested;
+  static Dictionary<long,Dictionary<string,object>> Prior=new Dictionary<long,Dictionary<string,object>>();
+  static List<Tuple<long,IntPtr,Dictionary<string,object>>> Enrich=new List<Tuple<long,IntPtr,Dictionary<string,object>>>();
+  static Dictionary<string,object> State(IntPtr h){
+    var names=new List<string>();var elements=new List<object>();
+    foreach(AutomationElement e in AutomationElement.FromHandle(h).FindAll(TreeScope.Descendants,Condition.TrueCondition)){
+      try{var c=e.Current;if(c.IsOffscreen||c.IsPassword||c.ControlType==ControlType.Edit||c.ControlType==ControlType.Document)continue;
+        string name=c.Name??"";if(name.Length>300)continue;if(name!=""&&!names.Contains(name))names.Add(name);
+        object value;bool? selected=null,checkedValue=null,expanded=null;
+        if(e.TryGetCurrentPattern(SelectionItemPattern.Pattern,out value))selected=((SelectionItemPattern)value).Current.IsSelected;
+        if(e.TryGetCurrentPattern(TogglePattern.Pattern,out value))checkedValue=((TogglePattern)value).Current.ToggleState==ToggleState.On;
+        if(e.TryGetCurrentPattern(ExpandCollapsePattern.Pattern,out value))expanded=((ExpandCollapsePattern)value).Current.ExpandCollapseState==ExpandCollapseState.Expanded;
+        elements.Add(new {automationId=c.AutomationId??"",role=c.ControlType.ProgrammaticName.Replace("ControlType.",""),name=name,enabled=c.IsEnabled,selected=selected,checkedValue=checkedValue,expanded=expanded});if(elements.Count>=100)break;
+      }catch{}
+    }
+    return new Dictionary<string,object>{{"windowTitle",Title(h)},{"visibleNames",names},{"elements",elements},{"observedAt",DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}};
+  }
+  static object Details(AutomationElement e){
+    var c=e.Current;var r=c.BoundingRectangle;var root=AutomationElement.FromHandle(Window).Current.BoundingRectangle;
+    var ancestors=new List<object>();var parent=TreeWalker.ControlViewWalker.GetParent(e);
+    for(int i=0;i<5&&parent!=null;i++,parent=TreeWalker.ControlViewWalker.GetParent(parent)){var pc=parent.Current;if(pc.NativeWindowHandle==Window.ToInt32())break;ancestors.Add(new {role=pc.ControlType.ProgrammaticName.Replace("ControlType.",""),name=pc.IsPassword||pc.ControlType==ControlType.Edit?"":pc.Name??""});}
+    var patterns=new List<string>();foreach(var pattern in e.GetSupportedPatterns())patterns.Add(pattern.ProgrammaticName);
+    string version="";try{uint pid;GetWindowThreadProcessId(Window,out pid);version=Process.GetProcessById((int)pid).MainModule.FileVersionInfo.FileVersion??"";}catch{}
+    return new {className=c.ClassName??"",ancestors=ancestors,supportedPatterns=patterns,enabled=c.IsEnabled,bboxNorm=new double[]{root.Width>0?(r.X-root.X)/root.Width:0,root.Height>0?(r.Y-root.Y)/root.Height:0,root.Width>0?r.Width/root.Width:0,root.Height>0?r.Height/root.Height:0},appVersion=version};
+  }
+
   static long LastClick,LastTyped;
   static string LastTarget="";
   static string Title(IntPtr h){var b=new StringBuilder(512);GetWindowText(h,b,b.Capacity);return b.ToString();}
@@ -60,6 +86,9 @@ class Bridge {
     }
     string title=Title(Window);if(title.Length>300)title=title.Substring(0,300);
     var row=new Dictionary<string,object>{{"eventId",Guid.NewGuid().ToString()},{"event",kind},{"target",t},{"window",new {process=ProcessName(Window),title=title}},{"timestamp",now}};
+    Dictionary<string,object> pre;Prior.TryGetValue(Window.ToInt64(),out pre);
+    row["capture"]=new Dictionary<string,object>{{"surface","uia"},{"preState",pre},{"postState",null},{"details",Details(e)},{"env",new {os=Environment.OSVersion.ToString(),dpi=(int?)null,resolution=new int[]{Screen.PrimaryScreen.Bounds.Width,Screen.PrimaryScreen.Bounds.Height},monitorCount=Screen.AllScreens.Length,locale=System.Globalization.CultureInfo.CurrentCulture.Name}}};
+    Enrich.Add(Tuple.Create(now+400,Window,row));
     if(direction!=null)row["direction"]=direction;
     Write(new {kind="step",step=row});
   }
@@ -86,9 +115,13 @@ class Bridge {
   static void Record() {
     Hook=SetWindowsHookEx(14,Callback,GetModuleHandle(null),0);
     if(Hook==IntPtr.Zero)throw new Exception("Cannot start recorder");
-    var timer=new System.Windows.Forms.Timer();timer.Interval=30;
+    new Thread(()=>{Console.ReadLine();StopRequested=true;}){IsBackground=true}.Start();
+    var timer=new System.Windows.Forms.Timer();timer.Interval=30;long lastSnapshot=0;
     timer.Tick+=(s,a)=>{
       try {
+        long tick=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        for(int i=Enrich.Count-1;i>=0;i--){var item=Enrich[i];if(tick>=item.Item1||StopRequested){try{((Dictionary<string,object>)item.Item3["capture"])["postState"]=State(item.Item2);Write(new {kind="enrichment",step=item.Item3});}catch{}Enrich.RemoveAt(i);}}
+        if(StopRequested){Application.ExitThread();return;}
         while(Pending.Count>0) {
           var item=Pending.Dequeue();var p=item.Item2.point;if(RecordAll)Window=item.Item3;
           var element=AutomationElement.FromPoint(new System.Windows.Point(p.x,p.y));
@@ -97,6 +130,7 @@ class Bridge {
         var foreground=GetForegroundWindow();
         if(RecordAll?Allowed(foreground):foreground==Window) {
           if(RecordAll)Window=foreground;
+          if(tick-lastSnapshot>200){Prior[Window.ToInt64()]=State(Window);lastSnapshot=tick;}
           bool typed=false;for(int k=0x30;k<=0x5A;k++)if((k<=0x39 || k>=0x41) && (GetAsyncKeyState(k)&0x8000)!=0)typed=true;
           if((GetAsyncKeyState(8)&0x8000)!=0 || (GetAsyncKeyState(32)&0x8000)!=0)typed=true;
           long now=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -157,6 +191,11 @@ class Bridge {
     Console.OutputEncoding=new UTF8Encoding(false);SetProcessDPIAware();
     try {
       if(args.Length==0)return;
+      if(args[0]=="protect"||args[0]=="unprotect"){
+        var bytes=Convert.FromBase64String(Console.In.ReadToEnd());
+        var result=args[0]=="protect"?System.Security.Cryptography.ProtectedData.Protect(bytes,null,System.Security.Cryptography.DataProtectionScope.CurrentUser):System.Security.Cryptography.ProtectedData.Unprotect(bytes,null,System.Security.Cryptography.DataProtectionScope.CurrentUser);
+        Console.Write(Convert.ToBase64String(result));return;
+      }
       if(args[0]=="hotkey") {Hook=SetWindowsHookEx(13,KeyCallback,GetModuleHandle(null),0);if(Hook==IntPtr.Zero)throw new Exception("Hotkey unavailable");Write(new {kind="ready"});Application.Run();UnhookWindowsHookEx(Hook);return;}
       if(args[0]=="foreground") {var h=GetForegroundWindow();Write(Allowed(h)?new {handle=h.ToInt64().ToString(),title=Title(h),process=ProcessName(h)}:null);return;}
       if(args[0]=="record-all") {RecordAll=true;Record();return;}
@@ -170,12 +209,8 @@ class Bridge {
       if(args[0]=="record")Record();
       else if(args[0]=="resolve")Resolve(args[2]);
       else if(args[0]=="watch")Watch(args[2],args.Length>3?args[3]:"click");
-      else if(args[0]=="snapshot") {
-        var names=new List<string>();var root=AutomationElement.FromHandle(Window);
-        foreach(AutomationElement e in root.FindAll(TreeScope.Descendants,Condition.TrueCondition)) {
-          try {var c=e.Current;if(!c.IsPassword && !c.IsOffscreen && c.ControlType!=ControlType.Edit && !String.IsNullOrEmpty(c.Name) && c.Name.Length<=300 && !names.Contains(c.Name))names.Add(c.Name);if(names.Count>=100)break;}catch{}
-        }
-        Write(new {visibleNames=names});
+      else if(args[0]=="snapshot") {Write(State(Window));return;
+
       }
     } catch {Write(new {kind="error",error="Jendela tidak dapat dibaca. Pilih ulang jendela aplikasi yang didukung."});Environment.ExitCode=1;}
   }

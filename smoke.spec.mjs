@@ -21,13 +21,13 @@ test.beforeAll(async()=>{
  await expect.poll(async()=>{try{return (await fetch(backendUrl+'/health')).ok;}catch{return false;}},{timeout:150000}).toBe(true);
 });
 test.afterAll(async()=>{if(backend){backend.stdin.write('stop');await new Promise(resolve=>{backend.once('exit',resolve);setTimeout(()=>{if(backend.exitCode===null)execFileSync('taskkill',['/pid',String(backend.pid),'/t','/f']);resolve();},10000).unref();});}});
-async function launch(){
- const profile=mkdtempSync(path.join(tmpdir(),'lighthouse-e2e-'));
+async function launch(existingProfile){
+ const profile=existingProfile||mkdtempSync(path.join(tmpdir(),'lighthouse-e2e-'));
  const env={...process.env,LIGHTHOUSE_PROFILE_DIR:profile,LIGHTHOUSE_BACKEND_URL:backendUrl};delete env.ELECTRON_RUN_AS_NODE;
  const executablePath=process.env.LIGHTHOUSE_TEST_EXE;
  const application=await electron.launch({...(executablePath?{executablePath}:{}),args:executablePath?[]:[path.resolve('.')],env});
  let panel;await expect.poll(async()=>{panel=application.windows().find(p=>p.url().endsWith('/panel.html'));return !!panel;}).toBe(true);
- await expect(panel.locator('#enter')).toBeEnabled();return {application,panel};
+ await expect(panel.locator('#enter')).toBeEnabled();return {application,panel,profile};
 }
 async function fixture(title,executable=fixturePath){
  const child=spawn(executable,['app',title],{windowsHide:false,stdio:['ignore','pipe','pipe']});
@@ -99,4 +99,25 @@ test('cursor-first session: full recording, role isolation, Alt+L context, live 
   await bar.locator('#group').click();await expect(a.locator('#group-code')).toHaveText(code);a.once('dialog',d=>d.accept());await a.locator('#close-group').click();await expect(a.locator('#welcome')).toBeVisible();
   await c.locator('#question').fill('Simpan');await c.locator('#question').press('Enter');await expect(c.locator('.message.failed').last()).toContainText('ditutup');
  }finally{for(const client of [owner,student]){const p=client.application.process();if(p.exitCode===null)try{execFileSync('taskkill',['/pid',String(p.pid),'/t','/f'],{stdio:'ignore'});}catch{}}target?.child.kill();other?.child.kill();copy?.child.kill();}
+});
+
+
+test('offline action queue survives process crash and uploads once after restart',async()=>{
+ let owner=await launch(),target;
+ try{
+  await owner.panel.locator('#create-tab').click();await owner.panel.locator('#name').fill('Recovery');await owner.panel.locator('#group-name').fill('Recovery E2E');await owner.panel.locator('#enter').click();
+  let bar=owner.application.windows().find(p=>p.url().endsWith('/toolbar.html'));
+  target=await fixture('Lighthouse Recovery Fixture');
+  await owner.application.evaluate(()=>{const original=globalThis.fetch;globalThis.fetch=(url,options)=>String(url).endsWith('/steps')?Promise.reject(new Error('Simulated offline')):original(url,options);});
+  await bar.locator('#record').click();await expect(bar.locator('#record-label')).toHaveText('Merekam');drive('click',target.handle);
+  await expect.poll(()=>bar.evaluate(()=>window.lighthouse.state().then(s=>s.captured))).toBeGreaterThan(0);
+  await bar.evaluate(()=>window.lighthouse.pause());
+  const saved=await bar.evaluate(()=>window.lighthouse.state());expect(saved.pending).toBeGreaterThan(0);expect(saved.uploaded).toBe(0);
+  const profile=owner.profile;execFileSync('taskkill',['/pid',String(owner.application.process().pid),'/t','/f'],{stdio:'ignore'});
+  owner=await launch(profile);bar=owner.application.windows().find(p=>p.url().endsWith('/toolbar.html'));
+  const restored=await bar.evaluate(()=>window.lighthouse.state());console.log('Recovery status',JSON.stringify({error:restored.recordError,captured:restored.captured,pending:restored.pending,role:restored.session?.role}));expect(restored.recording).toBe(false);expect(restored.recordingId).toBe(saved.recordingId);expect(restored.captured).toBe(saved.captured);
+  await expect.poll(()=>bar.evaluate(()=>window.lighthouse.state().then(s=>s.pending)),{timeout:20000}).toBe(0);
+  expect((await bar.evaluate(()=>window.lighthouse.state())).uploaded).toBe(saved.captured);
+  await bar.evaluate(()=>window.lighthouse.stop());
+ }finally{target?.child.kill();const proc=owner.application.process();if(proc.exitCode===null)try{execFileSync('taskkill',['/pid',String(proc.pid),'/t','/f'],{stdio:'ignore'});}catch{}}
 });

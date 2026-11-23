@@ -1,4 +1,7 @@
 import {app,BrowserWindow,ipcMain,screen,safeStorage,globalShortcut,Tray,Menu,nativeImage,clipboard} from 'electron';
+import {localCrypto} from './local-crypto.js';
+import {verifyOutcome} from './outcome.js';
+import {RecorderStore} from './recorder-store.js';
 import {placeChat} from './chat-placement.js';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
@@ -16,7 +19,12 @@ type WindowInfo={handle:string;title:string;process:string};
 let session:Session|undefined,panel:BrowserWindow,toolbar:BrowserWindow,chat:BrowserWindow,marker:BrowserWindow,buddy:BrowserWindow,tray:Tray;
 let recorder:ChildProcess|undefined,recordingId='',recording=false,queue:unknown[]=[],upload:Promise<void>|undefined,captured=0,uploaded=0,recordError='',recordElapsedMs=0,recordActiveSince=0;
 let quitting=false,hotkey=false,studentContext:WindowInfo|undefined,lastSeq=0,lastRecording='',markerTimer:ReturnType<typeof setTimeout>|undefined;
-let lastEvent='',guideStatus='idle';
+let lastEvent='',guideStatus='idle',stopRequested=false;
+let journal:RecorderStore;
+let storage:ReturnType<typeof localCrypto>;
+function decryptLocal(data:Buffer){return data.subarray(0,3).toString()==='LH1'?storage.decrypt(data):safeStorage.decryptString(data);}
+let stopping:Promise<void>|undefined;
+function persistRecorder(){if(!session||!journal)return;journal.save({schemaVersion:1,groupId:session.group.groupId,recordingId,queue,captured,uploaded,elapsedMs:elapsedRecording(),stopRequested});}
 let hotkeyAt=0,chatError='';
 let shortcutHelper:ChildProcess|undefined;
 let chatAnchor={x:0,y:0};
@@ -36,7 +44,7 @@ const execute=promisify(execFile);
 const nativePath=()=>app.isPackaged?path.join(process.resourcesPath,'native/LighthouseBridge.exe'):path.join(dir,'../native/bin/LighthouseBridge.exe');
 const webPreferences={preload:path.join(dir,'preload.cjs'),sandbox:true,contextIsolation:true,nodeIntegration:false};
 function secure(w:BrowserWindow){w.setMenu(null);w.webContents.setWindowOpenHandler(()=>({action:'deny'}));w.webContents.on('will-navigate',e=>e.preventDefault());}
-function save(){if(!safeStorage.isEncryptionAvailable())return;const p=path.join(app.getPath('userData'),'membership.enc');if(session)writeFileSync(p,safeStorage.encryptString(JSON.stringify(session)));else if(existsSync(p))unlinkSync(p);}
+function save(){const p=path.join(app.getPath('userData'),'membership.enc');if(session)writeFileSync(p,storage.encrypt(JSON.stringify(session)));else if(existsSync(p))unlinkSync(p);}
 async function api(route:string,body?:unknown){const r=await fetch(apiBase+route,{method:body===undefined?'GET':'POST',headers:{'content-type':'application/json',...(session?{authorization:`Bearer ${session.token}`}:{})},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(route==='/v1/guide'?75000:15000)});const data=await r.json() as any;if(!r.ok)throw new Error(data.error||'Koneksi terputus. Coba lagi.');return data;}
 async function native(args:string[]){const {stdout}=await execute(nativePath(),args,{windowsHide:true,timeout:15000,maxBuffer:2_000_000});return JSON.parse(stdout.trim().replace(/^\uFEFF/,''));}
 function elapsedRecording(){return recordElapsedMs+(recording?Math.max(0,performance.now()-recordActiveSince):0);}
@@ -46,17 +54,17 @@ function update(){for(const w of [panel,toolbar,chat])if(w&&!w.isDestroyed())w.w
 function hideGuide(){guideStatus='dismissed';guidePoint=undefined;const observer=guideWatcher;guideWatcher=undefined;observer?.kill();marker.hide();if(markerTimer)clearTimeout(markerTimer);}
 function hideChat(){chat.hide();hideGuide();}
 function showPanel(){panel.show();panel.focus();update();}
-async function flush(){if(upload)return upload;upload=(async()=>{while(queue.length){await api(`/v1/recordings/${recordingId}/steps`,queue[0]);queue.shift();uploaded++;recordError='';update();}})();try{await upload;}catch(e){recordError='Menghubungkan ulang?';update();throw e;}finally{upload=undefined;}}
+async function flush(){if(upload)return upload;upload=(async()=>{while(queue.length){await api(`/v1/recordings/${recordingId}/steps`,queue[0]);const sent=queue.shift() as any;if(!sent?.enrichment)uploaded++;recordError='';persistRecorder();update();}})();try{await upload;}catch(e){recordError='Menghubungkan ulang?';update();throw e;}finally{upload=undefined;}}
 async function startRecorder(){
- recordError='';recorder=spawn(nativePath(),['record-all'],{windowsHide:true,stdio:['ignore','pipe','pipe']});const child=recorder;
+ recordError='';recorder=spawn(nativePath(),['record-all'],{windowsHide:true,stdio:['pipe','pipe','pipe']});const child=recorder;
  await new Promise<void>((resolve,reject)=>{let ready=false;const timer=setTimeout(()=>{child.kill();reject(new Error('Recorder tidak merespons.'));},10000);
- createInterface({input:child.stdout!}).on('line',line=>{try{const row=JSON.parse(line.replace(/^\uFEFF/,''));if(row.kind==='ready'){ready=true;clearTimeout(timer);recordActiveSince=performance.now();recording=true;update();resolve();}if(row.kind==='step'){queue.push(row.step);captured++;lastEvent=row.step.event;update();void flush().catch(()=>{});}if(row.kind==='error'){recordError=row.error;update();if(!ready){clearTimeout(timer);reject(new Error(row.error));}}}catch{}});
+ createInterface({input:child.stdout!}).on('line',line=>{try{const row=JSON.parse(line.replace(/^\uFEFF/,''));if(row.kind==='ready'){ready=true;clearTimeout(timer);recordActiveSince=performance.now();recording=true;update();resolve();}if(row.kind==='step'||row.kind==='enrichment'){queue.push({...row.step,enrichment:row.kind==='enrichment'});if(row.kind==='step')captured++;lastEvent=row.step.event;persistRecorder();update();void flush().catch(()=>{});}if(row.kind==='error'){recordError=row.error;update();if(!ready){clearTimeout(timer);reject(new Error(row.error));}}}catch{recordError='Penyimpanan lokal gagal. Rekaman dijeda.';void pause().catch(()=>{});update();}});
  child.on('error',()=>{clearTimeout(timer);reject(new Error('Recorder Windows tidak tersedia.'));});child.on('exit',()=>{if(recorder===child){recorder=undefined;freezeRecording();if(ready)recordError='Rekaman terjeda. Tekan lanjut.';update();}if(!ready){clearTimeout(timer);reject(new Error('Recorder gagal dimulai.'));}});
  });
 }
-function pause(){const child=recorder;recorder=undefined;child?.kill();freezeRecording();update();}
-async function stop(){pause();await flush();if(recordingId)await api(`/v1/recordings/${recordingId}/stop`,{});recordingId='';recordError='';update();}
-async function record(){if(session?.role!=='assistant')throw new Error('Hanya asisten yang bisa merekam.');if(recordingId)throw new Error('Hentikan rekaman sebelumnya dulu.');const name='Sesi '+new Date().toLocaleString('id-ID',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});const r=await api('/v1/recordings',{name,process:'*'});recordingId=r.recordingId;recordElapsedMs=0;recordActiveSince=0;captured=uploaded=0;queue=[];await startRecorder();return state();}
+async function pause(){const child=recorder;recorder=undefined;freezeRecording();update();if(child){await new Promise<void>(resolve=>{const timer=setTimeout(()=>{child.kill();resolve();},2000);child.once('exit',()=>{clearTimeout(timer);resolve();});child.stdin?.on('error',()=>{});child.stdin?.write('stop\n');});}persistRecorder();}
+async function stop(){if(stopping)return stopping;stopping=(async()=>{stopRequested=true;await pause();persistRecorder();await flush();if(recordingId)await api(`/v1/recordings/${recordingId}/stop`,{});recordingId='';stopRequested=false;recordError='';persistRecorder();update();})();try{await stopping;}finally{stopping=undefined;}}
+async function record(){if(session?.role!=='assistant')throw new Error('Hanya asisten yang bisa merekam.');if(recordingId)throw new Error('Hentikan rekaman sebelumnya dulu.');const name='Sesi '+new Date().toLocaleString('id-ID',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});const r=await api('/v1/recordings',{name,process:'*'});recordingId=r.recordingId;recordElapsedMs=0;recordActiveSince=0;captured=uploaded=0;queue=[];stopRequested=false;persistRecorder();await startRecorder();return state();}
 async function openChat(capturedContext?:WindowInfo){
  if(!session){showPanel();return;}if(session.role!=='student'){showPanel();return;}if(chat.isVisible()){hideChat();return;}
  const pointer=screen.getCursorScreenPoint();
@@ -80,7 +88,7 @@ function syncRole(){
  tray.setToolTip(session?`Lighthouse · ${session.group.name}`:'Lighthouse');
  tray.setContextMenu(Menu.buildFromTemplate([{label:'Lighthouse',enabled:false},{label:'Group',click:showPanel},...(session?.role==='student'?[{label:'Tanya Lighthouse · Alt+L',click:()=>{void openChat();}}]:[]),{type:'separator'},{label:'Tutup Lighthouse',click:()=>{void quit();}}]));update();
 }
-async function quit(){if(recordingId){try{await stop();}catch{toolbar.show();return;}}quitting=true;app.quit();}
+async function quit(){if(recordingId){try{await stop();}catch{persistRecorder();}}quitting=true;app.quit();}
 async function guideStream(body:unknown,requestId:string){
  const response=await fetch(apiBase+'/v1/guide',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${session!.token}`},body:JSON.stringify({...body as object,stream:true}),signal:AbortSignal.timeout(150000)});
  if(!response.ok){const data=await response.json() as any;throw new Error(data.error||'Jawaban belum tersedia.');}
@@ -91,9 +99,18 @@ async function guideStream(body:unknown,requestId:string){
  for await(const chunk of response.body as any){buffer+=decoder.decode(chunk,{stream:true});if(buffer.length>65536)throw new Error('Jawaban terlalu besar.');let end;while((end=buffer.indexOf('\n'))>=0){consume(buffer.slice(0,end));buffer=buffer.slice(end+1);}}
  buffer+=decoder.decode();consume(buffer);if(!result)throw new Error('Jawaban terputus. Coba lagi.');return result;
 }
-function watchTarget(target:WindowInfo,locator:unknown,action:string){
+async function observeOutcome(target:WindowInfo,command:any){
+ let outcome:'observed'|'not-observed'|'unverifiable'='unverifiable';
+ for(let attempt=0;attempt<3;attempt++){
+  await new Promise(resolve=>setTimeout(resolve,400));
+  try{outcome=verifyOutcome(command.step.capture?.preState,command.step.capture?.postState,await native(['snapshot',target.handle]));}catch{outcome='unverifiable';}
+  if(outcome!=='not-observed')break;
+ }
+ await api('/v1/ack',{cmdId:command.cmdId,stepId:command.step.stepId,resolved:true,strategy:null,interaction:'target-clicked',outcome});
+}
+function watchTarget(target:WindowInfo,locator:unknown,action:string,command:any){
  const child=spawn(nativePath(),['watch',target.handle,Buffer.from(JSON.stringify(locator)).toString('base64'),action],{windowsHide:true,stdio:['ignore','pipe','pipe']});guideWatcher=child;guideStatus='watching';
- createInterface({input:child.stdout!}).on('line',line=>{try{if(guideWatcher!==child)return;const event=JSON.parse(line.replace(/^\uFEFF/,''));if(event.kind==='target-position'){const b=event.bounds;if([b.x,b.y,b.width,b.height].every(Number.isFinite)&&b.width>0&&b.height>0){const r=screen.screenToDipRect(null,{x:Math.round(b.x),y:Math.round(b.y),width:Math.round(b.width),height:Math.round(b.height)});guidePoint={x:r.x+r.width/2-16,y:r.y+r.height/2-16};}}else if(event.kind==='target-clicked'||event.kind==='target-lost'||event.kind==='error'){hideGuide();guideStatus=event.kind;chat.webContents.send('chat:target',{status:event.kind==='target-clicked'?'clicked':'lost'});}}catch{}});
+ createInterface({input:child.stdout!}).on('line',line=>{try{if(guideWatcher!==child)return;const event=JSON.parse(line.replace(/^\uFEFF/,''));if(event.kind==='target-position'){const b=event.bounds;if([b.x,b.y,b.width,b.height].every(Number.isFinite)&&b.width>0&&b.height>0){const r=screen.screenToDipRect(null,{x:Math.round(b.x),y:Math.round(b.y),width:Math.round(b.width),height:Math.round(b.height)});guidePoint={x:r.x+r.width/2-16,y:r.y+r.height/2-16};}}else if(event.kind==='target-clicked'||event.kind==='target-lost'||event.kind==='error'){hideGuide();guideStatus=event.kind;if(event.kind==='target-clicked')void observeOutcome(target,command).catch(()=>{});chat.webContents.send('chat:target',{status:event.kind==='target-clicked'?'clicked':'lost'});}}catch{}});
  child.on('error',()=>{if(guideWatcher===child){hideGuide();guideStatus='watch-error';}});child.on('exit',(code)=>{if(guideWatcher===child){hideGuide();guideStatus='watch-exit-'+code;}});
 }
 async function guide(input:any){
@@ -109,12 +126,16 @@ async function guide(input:any){
  const windows:WindowInfo[]=await native(['windows']);const matches=windows.filter(w=>w.process===command.step.window.process);
  const target=context?.process===command.step.window.process?context:matches.length===1?matches[0]:undefined;
  const resolution=target?await native(['resolve',target.handle,Buffer.from(JSON.stringify(command.step.target)).toString('base64')]):{resolved:false,reason:matches.length>1?'Ada beberapa jendela aplikasi. Buka jendela yang kamu pakai, lalu tekan Alt+L lagi.':`Buka ${command.step.window.process} dulu, lalu tekan Alt+L lagi.`};
- if(resolution.resolved){const b=resolution.bounds;if(![b.x,b.y,b.width,b.height].every(Number.isFinite)||b.width<=0||b.height<=0)throw new Error('Elemen belum bisa ditunjuk.');const r=screen.screenToDipRect(null,{x:Math.round(b.x),y:Math.round(b.y),width:Math.round(b.width),height:Math.round(b.height)});guidePoint={x:r.x+r.width/2-16,y:r.y+r.height/2-16};watchTarget(target!,command.step.target,command.step.event);lastSeq=command.step.seq;lastRecording=command.step.recordingId;}
+ if(resolution.resolved){const b=resolution.bounds;if(![b.x,b.y,b.width,b.height].every(Number.isFinite)||b.width<=0||b.height<=0)throw new Error('Elemen belum bisa ditunjuk.');const r=screen.screenToDipRect(null,{x:Math.round(b.x),y:Math.round(b.y),width:Math.round(b.width),height:Math.round(b.height)});guidePoint={x:r.x+r.width/2-16,y:r.y+r.height/2-16};watchTarget(target!,command.step.target,command.step.event,command);lastSeq=command.step.seq;lastRecording=command.step.recordingId;}
  await api('/v1/ack',{cmdId:command.cmdId,stepId:command.step.stepId,resolved:Boolean(resolution.resolved),strategy:resolution.strategy||null});
  return {message:command.explanation||command.say,instruction:command.say,resolved:Boolean(resolution.resolved),reason:resolution.reason||'',source:command.source,seq:command.step.seq,total:command.total};
 }
 app.whenReady().then(async()=>{
- try{const p=path.join(app.getPath('userData'),'membership.enc');if(existsSync(p)&&safeStorage.isEncryptionAvailable())session=JSON.parse(safeStorage.decryptString(readFileSync(p)));}catch{}
+ storage=localCrypto(app.getPath('userData'),nativePath());
+ try{const p=path.join(app.getPath('userData'),'membership.enc');if(existsSync(p)&&safeStorage.isEncryptionAvailable())session=JSON.parse(decryptLocal(readFileSync(p)));}catch{}
+ if(!safeStorage.isEncryptionAvailable())throw new Error('Encrypted local storage is unavailable');
+ journal=new RecorderStore(path.join(app.getPath('userData'),'recorder.enc'),s=>storage.encrypt(s),b=>decryptLocal(b));
+ try{const saved=journal.load();if(saved&&session?.role==='assistant'&&saved.groupId===session.group.groupId){recordingId=saved.recordingId;queue=saved.queue;captured=saved.captured;uploaded=saved.uploaded;recordElapsedMs=saved.elapsedMs;stopRequested=saved.stopRequested;if(recordingId)recordError='Rekaman dipulihkan. Lanjutkan saat siap.';}}catch{recordError='Rekaman lokal tidak dapat dibaca.';}
  const shared={frame:false,show:false,webPreferences};
  panel=new BrowserWindow({...shared,width:480,height:550,resizable:false,backgroundColor:'#f7f8fa'});
  toolbar=new BrowserWindow({...shared,width:400,height:76,resizable:false,transparent:true,alwaysOnTop:true,skipTaskbar:true});
@@ -132,8 +153,8 @@ app.whenReady().then(async()=>{
  handle('lab:close',manage,async()=>{if(recordingId)await stop();await api('/v1/group/close',{});session=undefined;save();syncRole();return state();});
  handle('lab:settings',manage,input=>api('/v1/group/settings',input));
  handle('lab:copy',manage,()=>{if(session)clipboard.writeText(session.group.code);});
- handle('lab:record',()=>[toolbar],record);handle('lab:pause',()=>[toolbar],()=>{pause();return state();});
- handle('lab:resume',()=>[toolbar],async()=>{if(!recordingId||recording)throw new Error('Tidak ada rekaman yang dijeda.');await startRecorder();return state();});
+ handle('lab:record',()=>[toolbar],record);handle('lab:pause',()=>[toolbar],async()=>{await pause();return state();});
+ handle('lab:resume',()=>[toolbar],async()=>{if(stopRequested)throw new Error('Sesi sedang diselesaikan. Tunggu sinkronisasi.');if(!recordingId||recording)throw new Error('Tidak ada rekaman yang dijeda.');await startRecorder();return state();});
  handle('lab:stop',()=>[toolbar],async()=>{await stop();return state();});
  handle('lab:chat-size',()=>[chat],input=>sizeChat(input?.expanded===true,Number.isFinite(input?.width)?input.width:116,Number.isFinite(input?.height)?input.height:180));
  handle('lab:guide',()=>[chat],guide);handle('lab:open-chat',()=>[panel],()=>openChat());handle('lab:hide-chat',()=>[chat],hideChat);
@@ -142,7 +163,7 @@ app.whenReady().then(async()=>{
  const work=screen.getPrimaryDisplay().workArea;toolbar.setPosition(Math.round(work.x+(work.width-400)/2),work.y+18);
  tray=new Tray(nativeImage.createFromPath(path.join(dir,'ui/tray.png')));tray.on('click',()=>{if(session?.role==='assistant')toolbar.show();else showPanel();});
  syncRole();
- setInterval(()=>{if(recordingId&&queue.length&&!upload)void flush().catch(()=>{});},5000).unref();
+ setInterval(()=>{if(recordingId&&!upload){persistRecorder();if(stopRequested)void stop().catch(()=>{});else if(queue.length)void flush().catch(()=>{});}},5000).unref();
  setInterval(()=>{
   if(session?.role!=='student'||panel.isVisible()){buddy.hide();buddyPosition=undefined;return;}
   const p=screen.getCursorScreenPoint();
@@ -157,4 +178,4 @@ app.whenReady().then(async()=>{
  },16).unref();
 });
 app.on('window-all-closed',()=>{});
-app.on('before-quit',()=>{quitting=true;globalShortcut.unregisterAll();shortcutHelper?.kill();guideWatcher?.kill();pause();});
+app.on('before-quit',event=>{if(!quitting){event.preventDefault();void quit();return;}globalShortcut.unregisterAll();shortcutHelper?.kill();guideWatcher?.kill();recorder?.kill();});

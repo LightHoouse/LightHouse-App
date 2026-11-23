@@ -22,7 +22,7 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
-      - run: node --test chat-placement.test.mjs
+      - run: node --test chat-placement.test.mjs recovery.test.mjs
 
   package:
     needs: verify
@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: LightHoouse/LightHosue-Backend
-          ref: 821853b86a71e795c2cf0d65a21779b70fe4d8ab
+          ref: 11025be16af996ce5883cc3d77c2483158e6e2a2
           path: backend-test
       - name: Prepare isolated backend for desktop E2E
         run: |

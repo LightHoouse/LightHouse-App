@@ -1,3 +1,4 @@
+import {localCrypto} from './dist/local-crypto.js';
 import {test,expect,_electron as electron} from '@playwright/test';
 import {spawn,execFileSync} from 'node:child_process';
 import {createInterface} from 'node:readline';
@@ -37,8 +38,8 @@ async function fixture(title,executable=fixturePath){
 const drive=(action,handle,id='saveButton')=>execFileSync(fixturePath,[action,handle,id],{windowsHide:true,timeout:15000});
 const killClient=client=>{const p=client?.application.process();if(p&&p.exitCode===null)try{execFileSync('taskkill',['/pid',String(p.pid),'/t','/f'],{stdio:'ignore'});}catch{}};
 async function memberApi(client,route){
- const encrypted=readFileSync(path.join(client.profile,'membership.enc')).toString('base64');
- const token=await client.application.evaluate(({safeStorage},data)=>JSON.parse(safeStorage.decryptString(Buffer.from(data,'base64'))).token,encrypted);
+ const encrypted=readFileSync(path.join(client.profile,'membership.enc'));
+ const token=JSON.parse(localCrypto(client.profile,path.resolve('native/bin/LighthouseBridge.exe')).decrypt(encrypted)).token;
  const response=await fetch(backendUrl+route,{headers:{authorization:`Bearer ${token}`}});if(!response.ok)throw new Error('Test read failed: '+response.status);return response.json();
 }
 

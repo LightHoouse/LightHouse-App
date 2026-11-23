@@ -12,7 +12,7 @@ A small lab companion that turns an assistant's demonstration into guidance on a
 4. **Student:** join with your name and the group code. Lighthouse stays beside your cursor.
 5. Press **Alt+L** to open a small purple input beside your mouse. It grows with the text; **Enter** sends and **Escape** closes. Answers stream into a compact card after you ask. Ask a question; Lighthouse uses the active application and the latest group recording to point at a matching control with the blue companion. You perform the action yourself.
 
-No MQTT, database, or AI credentials are needed in the installer. HTTPS connects to `lighthouse-be.yanzz.dev`; the backend owns group membership and AI access. Student questions and visible control names are sent to the service. Typed contents and password fields are not recorded. Membership is encrypted locally using Electron safeStorage and Windows protection. Groups expire after seven days.
+No MQTT, database, or AI credentials are needed in the installer. HTTPS connects to `lighthouse-be.yanzz.dev`; the backend owns group membership and AI access. Student questions and visible control names are sent to the service. Typed contents and password fields are not recorded. Membership and pending recordings are encrypted locally with a durable Windows DPAPI-protected profile key. Groups expire after seven days.
 
 ## What works
 
@@ -23,7 +23,7 @@ No MQTT, database, or AI credentials are needed in the installer. HTTPS connects
 - Explicit failure for ambiguous or missing targets; the click-through companion never takes control of input.
 - Source and packaged two-client E2E tests against a real MongoDB test instance and a separate native Windows target.
 
-This is a Windows prototype. Custom-drawn controls, elevated apps, complex menus, and browser DOM locators are not covered. The app does not execute actions or verify task completion. Recording buffers do not survive a process crash. The installer is unsigned.
+This is a Windows prototype. Custom-drawn controls, elevated apps, complex menus, and browser DOM locators are not covered. The app does not execute actions or infer overall task completion. After a target click it compares observed UI changes where evidence exists; otherwise the result is unverifiable. Pending recordings survive process restarts and resume paused. A pending Stop is retried after uploads finish. The installer is unsigned.
 
 ## Development
 

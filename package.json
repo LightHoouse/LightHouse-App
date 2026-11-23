@@ -47,7 +47,7 @@
       "output": "release"
     }
   },
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Lighthouse guide cursor for computer labs",
   "author": "Lighthouse Team"
 }
