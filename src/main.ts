@@ -25,7 +25,7 @@ function connect() {
   if (!/^[\w-]+$/.test(sessionId) || !/^[\w-]+$/.test(studentId) || !url.startsWith('mqtts://')) {
     connection = 'Konfigurasi MQTT tidak valid (perlu TLS dan ID tanpa pemisah topic).'; return;
   }
-  client = mqtt.connect(url, { username:process.env.MQTT_USERNAME, password:process.env.MQTT_PASSWORD, rejectUnauthorized:true, clientId:`lighthouse-${studentId}-${process.pid}` });
+  client = mqtt.connect(url, { username:process.env.MQTT_USERNAME, password:process.env.MQTT_PASSWORD, rejectUnauthorized:true, ca:process.env.MQTT_CA_CERT || undefined, clientId:`lighthouse-${studentId}-${process.pid}` });
   const base = `lab/${sessionId}/student/${studentId}`;
   client.on('error', () => { connection = 'Koneksi MQTT gagal. Periksa konfigurasi.'; });
   client.on('connect', () => { connection = 'MQTT terhubung.'; client!.subscribe(`${base}/cmd`, {qos:1}); });
@@ -59,3 +59,4 @@ app.whenReady().then(async () => {
   panel.on('closed', () => app.quit());
 });
 app.on('before-quit', () => client?.end(true));
+
