@@ -1,8 +1,8 @@
-﻿# Lighthouse Desktop 🔦
+# Lighthouse Desktop 🔦
 
 A desktop companion that helps students follow computer lab tasks at their own pace.
 
-[Download Windows previews](https://github.com/LightHoouse/LightHouse-App/releases) · [Backend](https://github.com/LightHoouse/LightHosue-Backend) · [Organization](https://github.com/LightHoouse)
+[Download for Windows](https://github.com/LightHoouse/LightHouse-App/releases) · [Backend](https://github.com/LightHoouse/LightHosue-Backend) · [Organization](https://github.com/LightHoouse)
 
 ![CI](https://github.com/LightHoouse/LightHouse-App/actions/workflows/ci.yml/badge.svg)
 
@@ -17,7 +17,7 @@ A desktop companion that helps students follow computer lab tasks at their own p
 
 ## Download
 
-Open [Releases](https://github.com/LightHoouse/LightHouse-App/releases), choose a preview, and download its `.exe`. `SHA256SUMS.txt` contains the installer checksum. Windows installers are currently unsigned. The control panel and demo work without MQTT configuration.
+Open [Releases](https://github.com/LightHoouse/LightHouse-App/releases), choose a version, and download its `.exe`. `SHA256SUMS.txt` contains the installer checksum. Windows installers are currently unsigned. The control panel and demo work without MQTT configuration.
 
 ## Stack
 
@@ -60,9 +60,9 @@ The smoke test opens the actual Electron panel, checks its sandboxed preload, di
 
 ## Releases
 
-Pull requests run checks and Windows packaging tests. Pushes to `master` and manual runs on `master` also publish a prerelease, only after source and packaged-executable tests pass. The release uses the exact tested artifact, not a second build, and includes a SHA-256 checksum.
+Pull requests, pushes to `master`, and manual runs build and test Windows artifacts. Push a `vX.Y.Z` tag matching `package.json` to publish a release after source and packaged-executable tests pass. Add notes at `docs/releases/X.Y.Z.md` before tagging. The release uses the exact tested artifact and includes the installer, `release-manifest.json`, and `SHA256SUMS.txt`.
 
-Versions use `<package-version>-ci.<run-number>.<attempt>`. There is no automatic updater yet. Local installers are written to `release/`.
+Published versions use `vX.Y.Z`; branch artifacts use `<package-version>-ci.<run-number>.<attempt>`. There is no automatic updater yet. Local installers are written to `release/`.
 
 ## Project layout
 

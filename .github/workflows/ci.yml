@@ -5,6 +5,7 @@ on:
   pull_request:
   push:
     branches: [master]
+    tags: ['v*']
 
 permissions:
   contents: read
@@ -34,13 +35,19 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Assign unique preview version
+      - name: Set and validate release version
         id: version
         shell: pwsh
         run: |
           $base = (Get-Content package.json | ConvertFrom-Json).version.Split('-')[0]
-          $version = "$base-ci.$env:GITHUB_RUN_NUMBER.$env:GITHUB_RUN_ATTEMPT"
-          npm version $version --no-git-tag-version
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            if ($env:GITHUB_REF_NAME -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Expected a vX.Y.Z release tag' }
+            $version = $env:GITHUB_REF_NAME.Substring(1)
+            if ($version -ne $base) { throw 'Release tag must match package.json version' }
+          } else {
+            $version = "$base-ci.$env:GITHUB_RUN_NUMBER.$env:GITHUB_RUN_ATTEMPT"
+          }
+          npm version $version --no-git-tag-version --allow-same-version
           "version=$version" >> $env:GITHUB_OUTPUT
       - run: npm test
       - run: npm run package
@@ -49,11 +56,19 @@ jobs:
         run: |
           $env:LIGHTHOUSE_TEST_EXE = "$pwd/release/win-unpacked/Lighthouse.exe"
           npx playwright test
-      - name: Checksum verified installer
+      - name: Manifest and checksums for verified installer
         shell: pwsh
         run: |
           Get-ChildItem release/*.exe | Rename-Item -NewName { $_.Name.Replace(' ', '.') }
-          Get-ChildItem release/*.exe | ForEach-Object {
+          @{
+            version = '${{ steps.version.outputs.version }}'
+            commit = $env:GITHUB_SHA
+            platform = 'windows-x64'
+            electron = (node -p "require('./node_modules/electron/package.json').version")
+            workflow = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+            verification = @('typecheck', 'source-smoke', 'packaged-executable-smoke')
+          } | ConvertTo-Json | Set-Content -Encoding utf8 release/release-manifest.json
+          Get-ChildItem release/*.exe,release/release-manifest.json | ForEach-Object {
             $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
             "$hash  $($_.Name)"
           } | Set-Content -Encoding utf8 release/SHA256SUMS.txt
@@ -63,11 +78,12 @@ jobs:
           path: |
             release/*.exe
             release/SHA256SUMS.txt
+            release/release-manifest.json
           if-no-files-found: error
 
   release:
     needs: [verify, package]
-    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -76,7 +92,10 @@ jobs:
         with:
           name: lighthouse-windows-installer
           path: release
-      - name: Publish tested Windows preview
+      - uses: actions/checkout@v4
+        with:
+          path: source
+      - name: Publish tested Windows release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -84,6 +103,8 @@ jobs:
           COMMIT: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          printf 'Windows x64 preview built from %s.\n\nVerified source and packaged Electron smoke tests: %s\n\nIncludes the desktop panel and text guide. Live UI targeting, recording, step verification, and the classroom dashboard are not implemented yet. This installer is unsigned.\n\nDownload the .exe and SHA256SUMS.txt below.\n' "$COMMIT" "$RUN_URL" > notes.md
-          gh release create "v$VERSION" release/*.exe release/SHA256SUMS.txt --repo "$GH_REPO" --target "$COMMIT" --title "Lighthouse $VERSION" --notes-file notes.md --prerelease
+          test -f "source/docs/releases/$VERSION.md"
+          cp "source/docs/releases/$VERSION.md" notes.md
+          printf '\n\nSource commit: `%s`. [Passed build and desktop checks](%s).\n' "$COMMIT" "$RUN_URL" >> notes.md
+          gh release create "v$VERSION" release/*.exe release/SHA256SUMS.txt release/release-manifest.json --repo "$GH_REPO" --verify-tag --title "Lighthouse $VERSION" --notes-file notes.md --latest
 
