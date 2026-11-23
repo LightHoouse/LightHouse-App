@@ -1,4 +1,4 @@
-name: CI
+name: CI and release
 
 on:
   workflow_dispatch:
@@ -25,6 +25,8 @@ jobs:
   package:
     needs: verify
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,6 +34,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Assign unique preview version
+        id: version
+        shell: pwsh
+        run: |
+          $base = (Get-Content package.json | ConvertFrom-Json).version.Split('-')[0]
+          $version = "$base-ci.$env:GITHUB_RUN_NUMBER.$env:GITHUB_RUN_ATTEMPT"
+          npm version $version --no-git-tag-version
+          "version=$version" >> $env:GITHUB_OUTPUT
       - run: npm test
       - run: npm run package
       - name: Smoke test packaged executable
@@ -39,8 +49,39 @@ jobs:
         run: |
           $env:LIGHTHOUSE_TEST_EXE = "$pwd/release/win-unpacked/Lighthouse.exe"
           npx playwright test
+      - name: Checksum verified installer
+        shell: pwsh
+        run: |
+          Get-ChildItem release/*.exe | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
+            "$hash  $($_.Name)"
+          } | Set-Content -Encoding utf8 release/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: lighthouse-windows-installer
-          path: release/*.exe
+          path: |
+            release/*.exe
+            release/SHA256SUMS.txt
           if-no-files-found: error
+
+  release:
+    needs: [verify, package]
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: lighthouse-windows-installer
+          path: release
+      - name: Publish tested Windows preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.package.outputs.version }}
+          COMMIT: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          printf 'Windows x64 preview built from %s.\n\nVerified source and packaged Electron smoke tests: %s\n\nIncludes the desktop panel and text guide. Live UI targeting, recording, step verification, and the classroom dashboard are not implemented yet. This installer is unsigned.\n\nDownload the .exe and SHA256SUMS.txt below.\n' "$COMMIT" "$RUN_URL" > notes.md
+          gh release create "v$VERSION" release/*.exe release/SHA256SUMS.txt --repo "$GH_REPO" --target "$COMMIT" --title "Lighthouse $VERSION" --notes-file notes.md --prerelease
