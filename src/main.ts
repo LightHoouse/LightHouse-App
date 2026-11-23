@@ -14,7 +14,7 @@ if(process.env.LIGHTHOUSE_PROFILE_DIR)app.setPath('userData',process.env.LIGHTHO
 type Session={token:string;role:string;group:{groupId:string;name:string;code:string}};
 type WindowInfo={handle:string;title:string;process:string};
 let session:Session|undefined,panel:BrowserWindow,toolbar:BrowserWindow,chat:BrowserWindow,marker:BrowserWindow,buddy:BrowserWindow,tray:Tray;
-let recorder:ChildProcess|undefined,recordingId='',recording=false,queue:unknown[]=[],upload:Promise<void>|undefined,captured=0,uploaded=0,recordError='',recordStart=0;
+let recorder:ChildProcess|undefined,recordingId='',recording=false,queue:unknown[]=[],upload:Promise<void>|undefined,captured=0,uploaded=0,recordError='',recordElapsedMs=0,recordActiveSince=0;
 let quitting=false,hotkey=false,studentContext:WindowInfo|undefined,lastSeq=0,lastRecording='',markerTimer:ReturnType<typeof setTimeout>|undefined;
 let lastEvent='';
 let hotkeyAt=0,chatError='';
@@ -26,7 +26,9 @@ function secure(w:BrowserWindow){w.setMenu(null);w.webContents.setWindowOpenHand
 function save(){if(!safeStorage.isEncryptionAvailable())return;const p=path.join(app.getPath('userData'),'membership.enc');if(session)writeFileSync(p,safeStorage.encryptString(JSON.stringify(session)));else if(existsSync(p))unlinkSync(p);}
 async function api(route:string,body?:unknown){const r=await fetch(apiBase+route,{method:body===undefined?'GET':'POST',headers:{'content-type':'application/json',...(session?{authorization:`Bearer ${session.token}`}:{})},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(route==='/v1/guide'?75000:15000)});const data=await r.json() as any;if(!r.ok)throw new Error(data.error||'Koneksi terputus. Coba lagi.');return data;}
 async function native(args:string[]){const {stdout}=await execute(nativePath(),args,{windowsHide:true,timeout:15000,maxBuffer:2_000_000});return JSON.parse(stdout.trim().replace(/^\uFEFF/,''));}
-function state(){return {session:session?{role:session.role,group:session.group}:null,recording,recordingId,captured,uploaded,pending:queue.length,recordError,recordStart,hotkey,lastEvent,hotkeyAt,chatError};}
+function elapsedRecording(){return recordElapsedMs+(recording?Math.max(0,performance.now()-recordActiveSince):0);}
+function freezeRecording(){recordElapsedMs=elapsedRecording();recording=false;}
+function state(){return {session:session?{role:session.role,group:session.group}:null,recording,recordingId,captured,uploaded,pending:queue.length,recordError,recordElapsedMs:elapsedRecording(),hotkey,lastEvent,hotkeyAt,chatError};}
 function update(){for(const w of [panel,toolbar,chat])if(w&&!w.isDestroyed())w.webContents.send('lab:state',state());}
 function hideGuide(){marker.hide();if(markerTimer)clearTimeout(markerTimer);}
 function hideChat(){chat.hide();hideGuide();}
@@ -35,13 +37,13 @@ async function flush(){if(upload)return upload;upload=(async()=>{while(queue.len
 async function startRecorder(){
  recordError='';recorder=spawn(nativePath(),['record-all'],{windowsHide:true,stdio:['ignore','pipe','pipe']});const child=recorder;
  await new Promise<void>((resolve,reject)=>{let ready=false;const timer=setTimeout(()=>{child.kill();reject(new Error('Recorder tidak merespons.'));},10000);
- createInterface({input:child.stdout!}).on('line',line=>{try{const row=JSON.parse(line.replace(/^\uFEFF/,''));if(row.kind==='ready'){ready=true;clearTimeout(timer);recording=true;update();resolve();}if(row.kind==='step'){queue.push(row.step);captured++;lastEvent=row.step.event;update();void flush().catch(()=>{});}if(row.kind==='error'){recordError=row.error;update();if(!ready){clearTimeout(timer);reject(new Error(row.error));}}}catch{}});
- child.on('error',()=>{clearTimeout(timer);reject(new Error('Recorder Windows tidak tersedia.'));});child.on('exit',()=>{if(recorder===child){recorder=undefined;recording=false;if(ready)recordError='Rekaman terjeda. Lanjutkan atau simpan.';update();}if(!ready){clearTimeout(timer);reject(new Error('Recorder gagal dimulai.'));}});
+ createInterface({input:child.stdout!}).on('line',line=>{try{const row=JSON.parse(line.replace(/^\uFEFF/,''));if(row.kind==='ready'){ready=true;clearTimeout(timer);recordActiveSince=performance.now();recording=true;update();resolve();}if(row.kind==='step'){queue.push(row.step);captured++;lastEvent=row.step.event;update();void flush().catch(()=>{});}if(row.kind==='error'){recordError=row.error;update();if(!ready){clearTimeout(timer);reject(new Error(row.error));}}}catch{}});
+ child.on('error',()=>{clearTimeout(timer);reject(new Error('Recorder Windows tidak tersedia.'));});child.on('exit',()=>{if(recorder===child){recorder=undefined;freezeRecording();if(ready)recordError='Rekaman terjeda. Lanjutkan atau simpan.';update();}if(!ready){clearTimeout(timer);reject(new Error('Recorder gagal dimulai.'));}});
  });
 }
-function pause(){const child=recorder;recorder=undefined;child?.kill();recording=false;update();}
+function pause(){const child=recorder;recorder=undefined;child?.kill();freezeRecording();update();}
 async function stop(){pause();await flush();if(recordingId)await api(`/v1/recordings/${recordingId}/stop`,{});recordingId='';recordError='';update();}
-async function record(){if(session?.role!=='assistant')throw new Error('Hanya asisten yang bisa merekam.');if(recordingId)throw new Error('Simpan rekaman sebelumnya dulu.');const name='Sesi '+new Date().toLocaleString('id-ID',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});const r=await api('/v1/recordings',{name,process:'*'});recordingId=r.recordingId;recordStart=Date.now();captured=uploaded=0;queue=[];await startRecorder();return state();}
+async function record(){if(session?.role!=='assistant')throw new Error('Hanya asisten yang bisa merekam.');if(recordingId)throw new Error('Simpan rekaman sebelumnya dulu.');const name='Sesi '+new Date().toLocaleString('id-ID',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});const r=await api('/v1/recordings',{name,process:'*'});recordingId=r.recordingId;recordElapsedMs=0;recordActiveSince=0;captured=uploaded=0;queue=[];await startRecorder();return state();}
 async function openChat(capturedContext?:WindowInfo){
  if(!session){showPanel();return;}if(session.role!=='student'){showPanel();return;}if(chat.isVisible()){hideChat();return;}
  const pointer=screen.getCursorScreenPoint();

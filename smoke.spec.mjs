@@ -55,15 +55,26 @@ test('cursor-first session: full recording, role isolation, Alt+L context, live 
   const first=await bar.evaluate(()=>window.lighthouse.state().then(s=>s.captured));
   drive('click',other.handle);await expect.poll(()=>bar.evaluate(()=>window.lighthouse.state().then(s=>s.uploaded))).toBeGreaterThan(first);
   await bar.locator('#pause').click();await expect(bar.locator('#record-label')).toHaveText('Dijeda');
+  const pausedTime=await bar.evaluate(()=>window.lighthouse.state().then(s=>s.recordElapsedMs));
+  const pausedClock=await bar.locator('#clock').innerText();
+  await bar.waitForTimeout(2200);
+  expect(await bar.evaluate(()=>window.lighthouse.state().then(s=>s.recordElapsedMs))).toBe(pausedTime);
+  await expect(bar.locator('#clock')).toHaveText(pausedClock);
+  await bar.screenshot({path:'test-results/recorder-paused.png'});
   const paused=await bar.evaluate(()=>window.lighthouse.state().then(s=>s.captured));drive('click',target.handle);expect(await bar.evaluate(()=>window.lighthouse.state().then(s=>s.captured))).toBe(paused);
   await bar.locator('#resume').click();await expect(bar.locator('#record-label')).toHaveText('Merekam');drive('type',target.handle,'studentInput');await expect.poll(()=>bar.evaluate(()=>window.lighthouse.state().then(s=>s.lastEvent))).toBe('type');
+  await expect.poll(()=>bar.evaluate(()=>window.lighthouse.state().then(s=>s.recordElapsedMs))).toBeGreaterThan(pausedTime);
   await bar.locator('#stop').click();await expect(bar.locator('#record')).toBeVisible();
+  await student.application.evaluate(({BrowserWindow,screen})=>{
+   const w=BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Chat');
+   w.once('show',()=>{globalThis.chatOpeningPosition={bounds:w.getBounds(),cursor:screen.getCursorScreenPoint(),area:screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea};});
+  });
   drive('move',copy.handle);drive('click',copy.handle);drive('hotkey','0');
   const c=student.application.windows().find(p=>p.url().endsWith('/chat.html'));
   await expect.poll(()=>s.evaluate(()=>window.lighthouse.state().then(s=>({triggered:s.hotkeyAt>0,error:s.chatError})))).toEqual({triggered:true,error:''});
   await expect.poll(()=>student.application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Chat').isVisible())).toBe(true);
   await expect(c.locator('#context')).toHaveText('LighthouseFixture');await expect(c.locator('#question')).toBeFocused();
-  const pos=await student.application.evaluate(({BrowserWindow,screen})=>{const w=BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Chat');return {bounds:w.getBounds(),cursor:screen.getCursorScreenPoint(),area:screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea};});
+  const pos=await student.application.evaluate(()=>globalThis.chatOpeningPosition);
   expect(pos.bounds.x).toBeGreaterThanOrEqual(pos.area.x);expect(pos.bounds.x+pos.bounds.width).toBeLessThanOrEqual(pos.area.x+pos.area.width);expect(Math.abs(pos.bounds.x-pos.cursor.x)).toBeLessThan(400);
   await c.locator('#question').fill(process.env.LIGHTHOUSE_E2E_URL?'Bagaimana caranya menyimpan dokumen saya?':'Simpan');await c.locator('#send').click();
   await expect(c.locator('.target-found')).toBeVisible({timeout:70000});if(process.env.LIGHTHOUSE_E2E_URL)await expect(c.locator('.message.assistant').last()).toHaveAttribute('data-source','ai');

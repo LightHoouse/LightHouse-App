@@ -7,3 +7,4 @@ release/
 playwright-report/
 test-results/
 native/bin/
+release-*/
