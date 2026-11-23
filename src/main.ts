@@ -1,4 +1,5 @@
 import {app,BrowserWindow,ipcMain,screen,safeStorage,globalShortcut,Tray,Menu,nativeImage,clipboard} from 'electron';
+import {placeChat} from './chat-placement.js';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {spawn,execFile,execFileSync,type ChildProcess} from 'node:child_process';
@@ -15,11 +16,22 @@ type WindowInfo={handle:string;title:string;process:string};
 let session:Session|undefined,panel:BrowserWindow,toolbar:BrowserWindow,chat:BrowserWindow,marker:BrowserWindow,buddy:BrowserWindow,tray:Tray;
 let recorder:ChildProcess|undefined,recordingId='',recording=false,queue:unknown[]=[],upload:Promise<void>|undefined,captured=0,uploaded=0,recordError='',recordElapsedMs=0,recordActiveSince=0;
 let quitting=false,hotkey=false,studentContext:WindowInfo|undefined,lastSeq=0,lastRecording='',markerTimer:ReturnType<typeof setTimeout>|undefined;
-let lastEvent='';
+let lastEvent='',guideStatus='idle';
 let hotkeyAt=0,chatError='';
 let shortcutHelper:ChildProcess|undefined;
 let chatAnchor={x:0,y:0};
-function sizeChat(expanded:boolean,composerWidth=116,replyHeight=180){const area=screen.getDisplayNearestPoint(chatAnchor).workArea;const width=expanded?350:Math.max(52,Math.min(280,composerWidth+16)),height=expanded?Math.max(120,Math.min(330,replyHeight)):50;chat.setBounds({x:Math.max(area.x+8,Math.min(chatAnchor.x+2,area.x+area.width-width-8)),y:Math.max(area.y+8,Math.min(chatAnchor.y+2,area.y+area.height-height-8)),width,height});}
+let guidePoint:{x:number;y:number}|undefined,guideWatcher:ChildProcess|undefined,buddyPosition:{x:number;y:number}|undefined;
+let chatSize={expanded:false,width:116,height:180};
+let chatPlacement='';
+function sizeChat(expanded:boolean,composerWidth=116,replyHeight=180){
+ chatSize={expanded,width:composerWidth,height:replyHeight};
+ const area=screen.getDisplayNearestPoint(chatAnchor).workArea;
+ const placed=placeChat(chatAnchor,area,{width:expanded?350:Math.max(52,Math.min(280,composerWidth+16)),height:expanded?Math.max(120,Math.min(330,replyHeight)):50});
+ chat.setBounds(placed.bounds);
+ const key=`${placed.above}:${placed.left}`;
+ if(key!==chatPlacement){chatPlacement=key;chat.webContents.send('chat:placement',{above:placed.above,left:placed.left});}
+}
+
 const execute=promisify(execFile);
 const nativePath=()=>app.isPackaged?path.join(process.resourcesPath,'native/LighthouseBridge.exe'):path.join(dir,'../native/bin/LighthouseBridge.exe');
 const webPreferences={preload:path.join(dir,'preload.cjs'),sandbox:true,contextIsolation:true,nodeIntegration:false};
@@ -29,9 +41,9 @@ async function api(route:string,body?:unknown){const r=await fetch(apiBase+route
 async function native(args:string[]){const {stdout}=await execute(nativePath(),args,{windowsHide:true,timeout:15000,maxBuffer:2_000_000});return JSON.parse(stdout.trim().replace(/^\uFEFF/,''));}
 function elapsedRecording(){return recordElapsedMs+(recording?Math.max(0,performance.now()-recordActiveSince):0);}
 function freezeRecording(){recordElapsedMs=elapsedRecording();recording=false;}
-function state(){return {session:session?{role:session.role,group:session.group}:null,recording,recordingId,captured,uploaded,pending:queue.length,recordError,recordElapsedMs:elapsedRecording(),hotkey,lastEvent,hotkeyAt,chatError};}
+function state(){return {session:session?{role:session.role,group:session.group}:null,recording,recordingId,captured,uploaded,pending:queue.length,recordError,recordElapsedMs:elapsedRecording(),hotkey,lastEvent,hotkeyAt,chatError,guideStatus,guidePoint:guidePoint||null};}
 function update(){for(const w of [panel,toolbar,chat])if(w&&!w.isDestroyed())w.webContents.send('lab:state',state());}
-function hideGuide(){marker.hide();if(markerTimer)clearTimeout(markerTimer);}
+function hideGuide(){guideStatus='dismissed';guidePoint=undefined;const observer=guideWatcher;guideWatcher=undefined;observer?.kill();marker.hide();if(markerTimer)clearTimeout(markerTimer);}
 function hideChat(){chat.hide();hideGuide();}
 function showPanel(){panel.show();panel.focus();update();}
 async function flush(){if(upload)return upload;upload=(async()=>{while(queue.length){await api(`/v1/recordings/${recordingId}/steps`,queue[0]);queue.shift();uploaded++;recordError='';update();}})();try{await upload;}catch(e){recordError='Menghubungkan ulang?';update();throw e;}finally{upload=undefined;}}
@@ -52,7 +64,7 @@ async function openChat(capturedContext?:WindowInfo){
  if(capturedContext)studentContext=capturedContext;
  else try{const current=JSON.parse(execFileSync(nativePath(),['foreground'],{windowsHide:true,timeout:2000,encoding:'utf8'}).trim().replace(/^\uFEFF/,''));if(current)studentContext=current;}catch{}
  chatAnchor=pointer;sizeChat(false);
- buddy.hide();chat.show();chat.focus();chat.webContents.focus();chat.webContents.send('chat:open',{context:studentContext?.process||'Desktop'});update();
+ chat.webContents.send('chat:open',{context:studentContext?.process||'Desktop'});chat.show();chat.focus();chat.webContents.focus();chat.webContents.send('chat:open',{context:studentContext?.process||'Desktop'});update();
 }
 function syncRole(){
  globalShortcut.unregisterAll();shortcutHelper?.kill();shortcutHelper=undefined;hotkey=false;
@@ -79,6 +91,11 @@ async function guideStream(body:unknown,requestId:string){
  for await(const chunk of response.body as any){buffer+=decoder.decode(chunk,{stream:true});if(buffer.length>65536)throw new Error('Jawaban terlalu besar.');let end;while((end=buffer.indexOf('\n'))>=0){consume(buffer.slice(0,end));buffer=buffer.slice(end+1);}}
  buffer+=decoder.decode();consume(buffer);if(!result)throw new Error('Jawaban terputus. Coba lagi.');return result;
 }
+function watchTarget(target:WindowInfo,locator:unknown,action:string){
+ const child=spawn(nativePath(),['watch',target.handle,Buffer.from(JSON.stringify(locator)).toString('base64'),action],{windowsHide:true,stdio:['ignore','pipe','pipe']});guideWatcher=child;guideStatus='watching';
+ createInterface({input:child.stdout!}).on('line',line=>{try{if(guideWatcher!==child)return;const event=JSON.parse(line.replace(/^\uFEFF/,''));if(event.kind==='target-position'){const b=event.bounds;if([b.x,b.y,b.width,b.height].every(Number.isFinite)&&b.width>0&&b.height>0){const r=screen.screenToDipRect(null,{x:Math.round(b.x),y:Math.round(b.y),width:Math.round(b.width),height:Math.round(b.height)});guidePoint={x:r.x+r.width/2-16,y:r.y+r.height/2-16};}}else if(event.kind==='target-clicked'||event.kind==='target-lost'||event.kind==='error'){hideGuide();guideStatus=event.kind;chat.webContents.send('chat:target',{status:event.kind==='target-clicked'?'clicked':'lost'});}}catch{}});
+ child.on('error',()=>{if(guideWatcher===child){hideGuide();guideStatus='watch-error';}});child.on('exit',(code)=>{if(guideWatcher===child){hideGuide();guideStatus='watch-exit-'+code;}});
+}
 async function guide(input:any){
  if(session?.role!=='student')throw new Error('Bergabung sebagai mahasiswa untuk bertanya.');
  let context=studentContext;
@@ -86,12 +103,13 @@ async function guide(input:any){
  const snapshot=context?await native(['snapshot',context.handle]):{visibleNames:[]};
  const question=typeof input?.question==='string'?input.question.trim().slice(0,1000):'';
  if(!question&&!input?.next)throw new Error('Tulis pertanyaanmu dulu.');
+ hideGuide();
  const command=await guideStream({...(input?.next&&lastRecording?{recordingId:lastRecording}:{}),question,afterSeq:input?.next?lastSeq:0,visibleNames:snapshot.visibleNames||[],activeProcess:context?.process||''},typeof input?.requestId==='string'?input.requestId.slice(0,80):'');
  hideGuide();if(command.done)return {done:true,message:'Kamu sudah sampai di akhir rekaman.'};
  const windows:WindowInfo[]=await native(['windows']);const matches=windows.filter(w=>w.process===command.step.window.process);
  const target=context?.process===command.step.window.process?context:matches.length===1?matches[0]:undefined;
  const resolution=target?await native(['resolve',target.handle,Buffer.from(JSON.stringify(command.step.target)).toString('base64')]):{resolved:false,reason:matches.length>1?'Ada beberapa jendela aplikasi. Buka jendela yang kamu pakai, lalu tekan Alt+L lagi.':`Buka ${command.step.window.process} dulu, lalu tekan Alt+L lagi.`};
- if(resolution.resolved){const b=resolution.bounds;if(![b.x,b.y,b.width,b.height].every(Number.isFinite)||b.width<=0||b.height<=0)throw new Error('Elemen belum bisa ditunjuk.');const r=screen.screenToDipRect(null,{x:Math.round(b.x),y:Math.round(b.y),width:Math.round(b.width),height:Math.round(b.height)});marker.setBounds({x:r.x-5,y:r.y-5,width:r.width+10,height:r.height+10});marker.showInactive();markerTimer=setTimeout(()=>marker.hide(),10000);lastSeq=command.step.seq;lastRecording=command.step.recordingId;}
+ if(resolution.resolved){const b=resolution.bounds;if(![b.x,b.y,b.width,b.height].every(Number.isFinite)||b.width<=0||b.height<=0)throw new Error('Elemen belum bisa ditunjuk.');const r=screen.screenToDipRect(null,{x:Math.round(b.x),y:Math.round(b.y),width:Math.round(b.width),height:Math.round(b.height)});guidePoint={x:r.x+r.width/2-16,y:r.y+r.height/2-16};watchTarget(target!,command.step.target,command.step.event);lastSeq=command.step.seq;lastRecording=command.step.recordingId;}
  await api('/v1/ack',{cmdId:command.cmdId,stepId:command.step.stepId,resolved:Boolean(resolution.resolved),strategy:resolution.strategy||null});
  return {message:command.explanation||command.say,instruction:command.say,resolved:Boolean(resolution.resolved),reason:resolution.reason||'',source:command.source,seq:command.step.seq,total:command.total};
 }
@@ -125,8 +143,18 @@ app.whenReady().then(async()=>{
  tray=new Tray(nativeImage.createFromPath(path.join(dir,'ui/tray.png')));tray.on('click',()=>{if(session?.role==='assistant')toolbar.show();else showPanel();});
  syncRole();
  setInterval(()=>{if(recordingId&&queue.length&&!upload)void flush().catch(()=>{});},5000).unref();
- let buddyPosition:{x:number;y:number}|undefined;
- setInterval(()=>{if(session?.role==='student'&&!chat.isVisible()&&!panel.isVisible()){const p=screen.getCursorScreenPoint();const a=screen.getDisplayNearestPoint(p).workArea;const target={x:Math.max(a.x,Math.min(p.x+19,a.x+a.width-32)),y:Math.max(a.y,Math.min(p.y+9,a.y+a.height-32))};if(!buddyPosition||Math.hypot(target.x-buddyPosition.x,target.y-buddyPosition.y)>600)buddyPosition=target;else{buddyPosition.x+=(target.x-buddyPosition.x)*.22;buddyPosition.y+=(target.y-buddyPosition.y)*.22;}buddy.setPosition(Math.round(buddyPosition.x),Math.round(buddyPosition.y));buddy.showInactive();}else{buddy.hide();buddyPosition=undefined;}},16).unref();
+ setInterval(()=>{
+  if(session?.role!=='student'||panel.isVisible()){buddy.hide();buddyPosition=undefined;return;}
+  const p=screen.getCursorScreenPoint();
+  if(chat.isVisible()&&(p.x!==chatAnchor.x||p.y!==chatAnchor.y)){chatAnchor=p;sizeChat(chatSize.expanded,chatSize.width,chatSize.height);}
+  const a=screen.getDisplayNearestPoint(guidePoint||p).workArea;
+  const point=guidePoint||{x:p.x+19,y:p.y+9};
+  const target={x:Math.max(a.x,Math.min(point.x,a.x+a.width-32)),y:Math.max(a.y,Math.min(point.y,a.y+a.height-32))};
+  if(!buddyPosition)buddyPosition={x:p.x+19,y:p.y+9};
+  if(!guidePoint&&Math.hypot(target.x-buddyPosition.x,target.y-buddyPosition.y)>600)buddyPosition=target;
+  else{buddyPosition.x+=(target.x-buddyPosition.x)*.22;buddyPosition.y+=(target.y-buddyPosition.y)*.22;}
+  buddy.setPosition(Math.round(buddyPosition.x),Math.round(buddyPosition.y));buddy.showInactive();
+ },16).unref();
 });
 app.on('window-all-closed',()=>{});
-app.on('before-quit',()=>{quitting=true;globalShortcut.unregisterAll();shortcutHelper?.kill();pause();});
+app.on('before-quit',()=>{quitting=true;globalShortcut.unregisterAll();shortcutHelper?.kill();guideWatcher?.kill();pause();});

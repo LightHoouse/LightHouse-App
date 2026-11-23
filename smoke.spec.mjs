@@ -87,11 +87,14 @@ test('cursor-first session: full recording, role isolation, Alt+L context, live 
   await c.locator('#question').fill(process.env.LIGHTHOUSE_E2E_URL?'Bagaimana caranya menyimpan dokumen saya?':'Simpan');await c.locator('#question').press('Enter');
   await expect(c.locator('.target-found')).toBeVisible({timeout:70000});if(process.env.LIGHTHOUSE_E2E_URL)await expect(c.locator('.message.assistant').last()).toHaveAttribute('data-source','ai');
   if(process.env.LIGHTHOUSE_E2E_URL){expect(Number(await c.locator('.message.assistant').last().getAttribute('data-deltas'))).toBeGreaterThan(0);await expect(c.locator('.message.assistant').last()).toHaveAttribute('data-streaming','false');}
-  const marker=await student.application.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Highlight');return {visible:w.isVisible(),bounds:w.getBounds()};});expect(marker.visible).toBe(true);expect(marker.bounds.x).toBeGreaterThan(500);
+  await expect.poll(()=>s.evaluate(()=>window.lighthouse.state().then(s=>!!s.guidePoint))).toBe(true);
+  await expect.poll(()=>student.application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Buddy').isVisible())).toBe(true);
+  expect(await student.application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Highlight').isVisible())).toBe(false);
+
   await c.screenshot({path:'test-results/cursor-chat.png'});await bar.screenshot({path:'test-results/recorder-toolbar.png'});
   await c.keyboard.press('Escape');expect(await student.application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Chat').isVisible())).toBe(false);
   drive('hide',target.handle);drive('hide',other.handle);drive('hide',copy.handle);drive('focus',copy.handle);drive('hotkey','0');await expect(c.locator('#question')).toBeFocused();
-  await c.locator('#question').fill('Simpan');await c.locator('#question').press('Enter');await expect(c.locator('.message.assistant').last()).not.toHaveClass(/pending/,{timeout:70000});
+  await c.locator('#question').fill('Simpan');await c.locator('#question').press('Enter');await expect(c.locator('.message.assistant').last()).toHaveAttribute('data-streaming','false',{timeout:100000});
   expect(await student.application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Highlight').isVisible())).toBe(false);
   await bar.locator('#group').click();await expect(a.locator('#group-code')).toHaveText(code);a.once('dialog',d=>d.accept());await a.locator('#close-group').click();await expect(a.locator('#welcome')).toBeVisible();
   await c.locator('#question').fill('Simpan');await c.locator('#question').press('Enter');await expect(c.locator('.message.failed').last()).toContainText('ditutup');

@@ -10,7 +10,7 @@ A small lab companion that turns an assistant's demonstration into guidance on a
 2. Click **Record** on the floating toolbar, then demonstrate across your applications.
 3. Use **Pause / Resume** as needed, then **Stop** to end the session. Steps sync automatically, without per-step save dialogs. No manual step notes are needed.
 4. **Student:** join with your name and the group code. Lighthouse stays beside your cursor.
-5. Press **Alt+L** to open a small purple input beside your mouse. It grows with the text; **Enter** sends and **Escape** closes. Answers stream into a compact card after you ask. Ask a question; Lighthouse uses the active application and the latest group recording to highlight a matching control. You perform the action yourself.
+5. Press **Alt+L** to open a small purple input beside your mouse. It grows with the text; **Enter** sends and **Escape** closes. Answers stream into a compact card after you ask. Ask a question; Lighthouse uses the active application and the latest group recording to point at a matching control with the blue companion. You perform the action yourself.
 
 No MQTT, database, or AI credentials are needed in the installer. HTTPS connects to `lighthouse-be.yanzz.dev`; the backend owns group membership and AI access. Student questions and visible control names are sent to the service. Typed contents and password fields are not recorded. Membership is encrypted locally using Electron safeStorage and Windows protection. Groups expire after seven days.
 
@@ -20,7 +20,7 @@ No MQTT, database, or AI credentials are needed in the installer. HTTPS connects
 - Native Windows UI Automation recording of accessible targets, mouse clicks, typing events without text, and scroll events.
 - Sequential guidance and AI selection from the group's recorded steps.
 - Live target resolution by AutomationId or control type/name, including relocated windows.
-- Explicit failure for ambiguous or missing targets; a click-through highlight never takes control of input.
+- Explicit failure for ambiguous or missing targets; the click-through companion never takes control of input.
 - Source and packaged two-client E2E tests against a real MongoDB test instance and a separate native Windows target.
 
 This is a Windows prototype. Custom-drawn controls, elevated apps, complex menus, and browser DOM locators are not covered. The app does not execute actions or verify task completion. Recording buffers do not survive a process crash. The installer is unsigned.
@@ -58,3 +58,21 @@ Set `LIGHTHOUSE_E2E_BACKEND_DIR` if the backend checkout is elsewhere. `LIGHTHOU
 Push a `vX.Y.Z` tag matching `package.json` after adding `docs/releases/X.Y.Z.md`. CI checks the source, records and resolves real native controls with two clients, packages the app, and repeats the test against the packaged executable. Only that tested installer is published, with `release-manifest.json` and `SHA256SUMS.txt`. Branch builds create artifacts without publishing releases. There is no automatic updater yet.
 
 Typography uses bundled [DM Sans](https://fonts.google.com/specimen/DM+Sans), licensed under the [SIL Open Font License](src/ui/fonts/OFL.txt). Cursor styling is inspired by [Clicky](https://github.com/farzaa/clicky).
+
+### Extended desktop trial
+
+The opt-in long scenario exercises 120 native input actions across two applications, three pause/resume cycles, database ordering and redaction, repeated questions, encrypted membership after restarting the student client, unavailable controls, disabled questions, a second recording, and group closure. It creates its own group and closes it afterward. Run it against a configured live backend to test real AI streaming; it uses the desktop for native input.
+
+```powershell
+$env:LIGHTHOUSE_LONG_E2E = '1'
+$env:LIGHTHOUSE_E2E_URL = 'https://lighthouse-be.yanzz.dev'
+# Optional: target an already-packaged executable instead of source.
+$env:LIGHTHOUSE_TEST_EXE = "$pwd/release-0.2.2/win-unpacked/Lighthouse.exe"
+npx playwright test
+```
+
+Results are written to `test-results/long-session-report.json`; screenshots accompany each completed question. Normal CI continues to run the isolated smoke scenario. These tests cover native accessible test controls, not every third-party application's canvas.
+
+The chat bubble follows your mouse while open. The answer card flips above the input near the bottom edge and shifts left near the right edge. After an answer, the blue companion travels to the resolved control; your real pointer stays under your control. Use Enter to send and Escape to dismiss.
+
+For the optional Windows Calculator test, open Calculator, set `LIGHTHOUSE_REAL_E2E=1` and `LIGHTHOUSE_E2E_URL`, then run `npm test`. Use an empty Calculator session; the test enters 7 + 8.

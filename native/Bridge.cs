@@ -107,8 +107,7 @@ class Bridge {
     timer.Start();Write(new {kind="ready"});
     Application.Run();UnhookWindowsHookEx(Hook);
   }
-  static void Resolve(string data) {
-    var t=Json.Deserialize<Dictionary<string,string>>(Encoding.UTF8.GetString(Convert.FromBase64String(data)));
+  static AutomationElement Locate(Dictionary<string,string> t,out string strategy) {
     var root=AutomationElement.FromHandle(Window);
     var all=root.FindAll(TreeScope.Descendants,Condition.TrueCondition);
     var ids=new List<AutomationElement>();var names=new List<AutomationElement>();
@@ -119,12 +118,40 @@ class Bridge {
         if(t["name"]!="" && c.Name==t["name"])names.Add(e);
       } catch {}
     }
-    AutomationElement found=null;string strategy=null;
+    AutomationElement found=null;strategy=null;
     if(ids.Count==1){found=ids[0];strategy="automationId";}
     else if(ids.Count==0 && names.Count==1){found=names[0];strategy="role-name";}
-    if(found==null){Write(new {resolved=false,reason=(ids.Count>1 || names.Count>1)?"Target ambigu. Buka tampilan yang sesuai.":"Target belum terlihat. Buka tampilan sesuai rekaman."});return;}
+    return found;
+  }
+  static Dictionary<string,string> DecodeTarget(string data){return Json.Deserialize<Dictionary<string,string>>(Encoding.UTF8.GetString(Convert.FromBase64String(data)));}
+  static void Resolve(string data){
+    string strategy;var found=Locate(DecodeTarget(data),out strategy);
+    if(found==null){Write(new {resolved=false,reason="Target tidak terlihat atau ambigu."});return;}
     var r=found.Current.BoundingRectangle;
     Write(new {resolved=true,strategy=strategy,bounds=new {x=r.X,y=r.Y,width=r.Width,height=r.Height}});
+  }
+  static void Watch(string data,string action){
+    var target=DecodeTarget(data);string strategy;var element=Locate(target,out strategy);
+    if(element==null)throw new Exception("Target missing");
+    var bounds=element.Current.BoundingRectangle;
+    Hook=SetWindowsHookEx(14,Callback,GetModuleHandle(null),0);
+    if(Hook==IntPtr.Zero)throw new Exception("Mouse observer unavailable");
+    var timer=new System.Windows.Forms.Timer();timer.Interval=100;int misses=0;
+    timer.Tick+=(s,a)=>{
+      try{
+        while(Pending.Count>0){var item=Pending.Dequeue();var p=item.Item2.point;
+          if(item.Item1==(action=="rightClick"?0x204:0x201)&&bounds.Contains(p.x,p.y)){
+            Write(new {kind="target-clicked"});Application.ExitThread();return;
+          }
+        }
+        if(!IsWindowVisible(Window)){Write(new {kind="target-lost"});Application.ExitThread();return;}
+        element=Locate(target,out strategy);
+        if(element==null){if(++misses>=10){Write(new {kind="target-lost"});Application.ExitThread();}return;}
+        misses=0;bounds=element.Current.BoundingRectangle;
+        Write(new {kind="target-position",bounds=new {x=bounds.X,y=bounds.Y,width=bounds.Width,height=bounds.Height}});
+      }catch{if(++misses>=10){Write(new {kind="target-lost"});Application.ExitThread();}}
+    };
+    timer.Start();Write(new {kind="ready"});Application.Run();timer.Stop();UnhookWindowsHookEx(Hook);
   }
   [STAThread] static void Main(string[] args) {
     Console.OutputEncoding=new UTF8Encoding(false);SetProcessDPIAware();
@@ -142,6 +169,7 @@ class Bridge {
       if(!IsWindowVisible(Window))throw new Exception("Selected window is unavailable");
       if(args[0]=="record")Record();
       else if(args[0]=="resolve")Resolve(args[2]);
+      else if(args[0]=="watch")Watch(args[2],args.Length>3?args[3]:"click");
       else if(args[0]=="snapshot") {
         var names=new List<string>();var root=AutomationElement.FromHandle(Window);
         foreach(AutomationElement e in root.FindAll(TreeScope.Descendants,Condition.TrueCondition)) {

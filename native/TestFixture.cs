@@ -12,6 +12,7 @@ class TestFixture {
  [DllImport("user32.dll")] static extern void keybd_event(byte k,byte s,uint f,UIntPtr e);
  [DllImport("user32.dll")] static extern bool MoveWindow(IntPtr h,int x,int y,int w,int height,bool repaint);
  [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h,int cmd);
+ [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
  [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
  [STAThread] static void Main(string[] args){
   SetProcessDPIAware();
@@ -29,14 +30,21 @@ class TestFixture {
    var status=new Label{Text="Belum disimpan",Location=new Point(30,150),Width=300};
    save.Click+=(s,e)=>status.Text="Tersimpan";
    form.Controls.Add(save);form.Controls.Add(edit);form.Controls.Add(status);
+   string[] ids={"openProject","addData","calculateTotal","reviewResult","exportReport"};
+   string[] names={"Buka proyek","Tambah data","Hitung total","Tinjau hasil","Ekspor laporan"};
+   for(int i=0;i<ids.Length;i++){var button=new Button{Name=ids[i],AccessibleName=names[i],Text=names[i],Location=new Point(320,20+i*40),Width=140};button.Click+=(s,e)=>status.Text=((Button)s).Text;form.Controls.Add(button);}
    form.Shown+=(s,e)=>{Console.WriteLine(form.Handle.ToInt64());Console.Out.Flush();};Application.Run(form);return;
   }
+  if(args[0]=="pointer"){SetCursorPos(int.Parse(args[1]),int.Parse(args[2]));return;}
   var handle=new IntPtr(long.Parse(args[1]));
   if(args[0]=="focus"){keybd_event(0x12,0,0,UIntPtr.Zero);keybd_event(0x12,0,2,UIntPtr.Zero);SetForegroundWindow(handle);Thread.Sleep(150);return;}
   if(args[0]=="move"){MoveWindow(handle,750,350,500,300,true);return;}
+  if(args[0]!="hide"&&args[0]!="bounds"){if(IsIconic(handle))ShowWindow(handle,9);keybd_event(0x12,0,0,UIntPtr.Zero);keybd_event(0x12,0,2,UIntPtr.Zero);SetForegroundWindow(handle);Thread.Sleep(250);}
   var root=AutomationElement.FromHandle(handle);
+  if(args[0]=="inspect"){foreach(AutomationElement e in root.FindAll(TreeScope.Descendants,Condition.TrueCondition)){try{var c=e.Current;if(!c.IsOffscreen&&c.ControlType==ControlType.Button)Console.WriteLine(c.AutomationId+" | "+c.Name);}catch{}}return;}
   var element=root.FindFirst(TreeScope.Descendants,new PropertyCondition(AutomationElement.AutomationIdProperty,args[2]));
   if(element==null)throw new Exception("Test control not found");
+  if(args[0]=="bounds"){var b=element.Current.BoundingRectangle;Console.WriteLine("{\"x\":"+(int)b.X+",\"y\":"+(int)b.Y+",\"width\":"+(int)b.Width+",\"height\":"+(int)b.Height+"}");return;}
   if(args[0]=="hide"){ShowWindow(new IntPtr(element.Current.NativeWindowHandle),0);return;}
   keybd_event(0x12,0,0,UIntPtr.Zero);keybd_event(0x12,0,2,UIntPtr.Zero);SetForegroundWindow(handle);Thread.Sleep(150);
   var r=element.Current.BoundingRectangle;SetCursorPos((int)(r.X+r.Width/2),(int)(r.Y+r.Height/2));mouse_event(2,0,0,0,UIntPtr.Zero);Thread.Sleep(150);mouse_event(4,0,0,0,UIntPtr.Zero);

@@ -18,17 +18,17 @@ async function ask() {
   const question = $('question').value.trim(); if (busy || !question) return;
   busy = true; $('send').disabled = true; document.body.classList.remove('compact');
   message(question, 'user'); $('question').value = '';
-  const pending = message('Sebentar...', 'assistant pending');
+  const pending = message('', 'assistant pending');pending.setAttribute('aria-label','Lighthouse sedang berpikir');const dots=document.createElement('span');dots.className='thinking-dots';dots.setAttribute('aria-hidden','true');for(let i=0;i<3;i++)dots.append(document.createElement('i'));pending.append(dots);
   const requestId = crypto.randomUUID(); activeRequest = {requestId, pending, text:''};
   try {
     await fit();
     const result = await api.guide({question, requestId});
-    pending.classList.remove('pending'); pending.textContent = plain(result.message || result.instruction);
+    pending.removeAttribute('aria-label');pending.classList.remove('pending'); pending.textContent = plain(result.message || result.instruction);
     if (result.reason) { const note=document.createElement('div'); note.className='response-note'; note.textContent=result.reason; pending.append(note); }
-    if (result.resolved) { const label=document.createElement('span'); label.className='target-found'; label.textContent='Ditandai di layarmu'; pending.append(label); }
+    if (result.resolved) { const label=document.createElement('span'); label.className='target-found'; label.textContent='Klik target yang ditunjuk kursor biru'; pending.append(label); }
     pending.dataset.source = result.source || ''; pending.dataset.resolved = String(!!result.resolved);
   } catch (error) {
-    pending.classList.remove('pending'); pending.classList.add('failed');
+    pending.removeAttribute('aria-label');pending.classList.remove('pending'); pending.classList.add('failed');
     pending.textContent = error.message.replace(/^Error invoking remote method '[^']+': Error: /, '');
   } finally {
     pending.dataset.streaming='false'; activeRequest=undefined; busy=false; $('send').disabled=false;
@@ -38,7 +38,7 @@ async function ask() {
 api.onDelta(event => {
   if (!activeRequest || event.requestId !== activeRequest.requestId) return;
   const current=activeRequest; current.text+=event.text; current.pending.textContent=plain(current.text);
-  current.pending.classList.remove('pending'); current.pending.dataset.streaming='true';
+  current.pending.removeAttribute('aria-label');current.pending.classList.remove('pending'); current.pending.dataset.streaming='true';
   current.pending.dataset.deltas=String(Number(current.pending.dataset.deltas || 0)+1);
   void fit(); current.pending.scrollIntoView({block:'end'});
 });
@@ -48,3 +48,7 @@ $('question').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();v
 document.addEventListener('keydown',event=>{if(event.key==='Escape')void api.hideChat();});
 api.onChatOpen(state=>{document.body.classList.add('compact');$('context').textContent=state.context;void fit();$('question').focus();});
 document.fonts.ready.then(fit);
+
+api.onTarget(event=>{const label=[...document.querySelectorAll('.target-found')].at(-1);if(label)label.textContent=event.status==='clicked'?'Target sudah diklik':'Target berubah. Tanya lagi untuk menunjuk ulang.';});
+
+api.onPlacement(position=>{document.body.classList.toggle('above',position.above);document.body.classList.toggle('left',position.left);});
