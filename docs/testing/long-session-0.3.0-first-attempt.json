@@ -1,0 +1,96 @@
+{
+  "startedAt": "2026-11-23T17:44:55.197Z",
+  "backend": "https://lighthouse-be.yanzz.dev",
+  "executable": "source",
+  "pauses": [
+    {
+      "number": 1,
+      "frozenMs": 28505.841399999998,
+      "capturedUnchanged": true
+    },
+    {
+      "number": 2,
+      "frozenMs": 56709.21349999999,
+      "capturedUnchanged": true
+    },
+    {
+      "number": 3,
+      "frozenMs": 84574.1273,
+      "capturedUnchanged": true
+    }
+  ],
+  "questions": [
+    {
+      "question": "Bagaimana membuka proyek?",
+      "targetId": "openProject",
+      "deltas": 11,
+      "elapsedMs": 15084,
+      "matched": true,
+      "expectedFailure": false,
+      "missingTarget": false,
+      "answer": "Klik tombol “Buka proyek” untuk membuka proyek.\nKlik target yang ditunjuk kursor biru"
+    },
+    {
+      "question": "Bagaimana menambahkan data?",
+      "targetId": "addData",
+      "deltas": 12,
+      "elapsedMs": 15666,
+      "matched": true,
+      "expectedFailure": false,
+      "missingTarget": false,
+      "answer": "Klik tombol “Tambah data” untuk mulai menambahkan data.\nKlik target yang ditunjuk kursor biru"
+    },
+    {
+      "question": "Bagaimana menghitung total?",
+      "targetId": "calculateTotal",
+      "deltas": 13,
+      "elapsedMs": 13985,
+      "matched": true,
+      "expectedFailure": false,
+      "missingTarget": false,
+      "answer": "Klik tombol Hitung total untuk memulai penghitungan total.\nKlik target yang ditunjuk kursor biru"
+    }
+  ],
+  "checkpoints": [
+    {
+      "block": 1,
+      "captured": 33,
+      "uploaded": 33,
+      "elapsedMs": 28488.039599999996
+    },
+    {
+      "block": 2,
+      "captured": 66,
+      "uploaded": 66,
+      "elapsedMs": 56678.4784
+    },
+    {
+      "block": 3,
+      "captured": 99,
+      "uploaded": 99,
+      "elapsedMs": 84544.7806
+    },
+    {
+      "block": 4,
+      "captured": 132,
+      "uploaded": 132,
+      "elapsedMs": 112645.9804
+    }
+  ],
+  "recording": {
+    "events": 132,
+    "typedEvents": 12,
+    "uniqueIds": true,
+    "contiguousSequence": true,
+    "pending": 0,
+    "processes": [
+      "LighthouseFixture",
+      "LighthouseOtherFixture"
+    ],
+    "activeDurationMs": 112663.89749999999
+  },
+  "reconnected": true,
+  "passed": false,
+  "error": "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBeLessThanOrEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected: <= \u001b[32m2\u001b[39m\nReceived:    \u001b[31m213\u001b[39m",
+  "wallTimeMs": 199172
+}

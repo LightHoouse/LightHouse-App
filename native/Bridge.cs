@@ -27,7 +27,9 @@ class Bridge {
   [DllImport("user32.dll")] static extern bool UnhookWindowsHookEx(IntPtr h);
   [DllImport("kernel32.dll")] static extern IntPtr GetModuleHandle(string name);
   [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
-  static IntPtr Window,Hook;
+  static IntPtr Window,Hook,KeyboardHook;
+  static HookProc RecordKeyCallback=OnRecordKey;
+  static Queue<IntPtr> TypedPending=new Queue<IntPtr>();
   static HookProc Callback=OnMouse;
   static HookProc KeyCallback=OnKey;
   static bool ShortcutDown;
@@ -97,7 +99,7 @@ class Bridge {
     if(code>=0 && (m==0x201 || m==0x204 || m==0x20A)) {
       var value=(MouseData)Marshal.PtrToStructure(data,typeof(MouseData));
       var root=GetAncestor(WindowFromPoint(value.point),2);
-      if(Pending.Count<200 && (RecordAll?Allowed(root):root==Window))Pending.Enqueue(Tuple.Create(m,value,root));
+      if(!StopRequested && Pending.Count<200 && (RecordAll?Allowed(root):root==Window))Pending.Enqueue(Tuple.Create(m,value,root));
     }
     return CallNextHookEx(Hook,code,message,data);
   }
@@ -112,34 +114,48 @@ class Bridge {
     }
     return CallNextHookEx(Hook,code,message,data);
   }
+  static IntPtr OnRecordKey(int code,IntPtr message,IntPtr data){
+    if(code>=0&&!StopRequested&&(message.ToInt32()==0x100||message.ToInt32()==0x104)){
+      int key=Marshal.ReadInt32(data);var h=GetForegroundWindow();
+      if((key==8||key==32||(key>=0x30&&key<=0x5A)||(key>=186&&key<=222))&&(GetAsyncKeyState(17)&0x8000)==0&&(GetAsyncKeyState(18)&0x8000)==0&&(RecordAll?Allowed(h):h==Window)){
+        long now=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if(now-LastTyped>800&&TypedPending.Count<100)TypedPending.Enqueue(h);
+        LastTyped=now;
+      }
+    }
+    return CallNextHookEx(KeyboardHook,code,message,data);
+  }
   static void Record() {
     Hook=SetWindowsHookEx(14,Callback,GetModuleHandle(null),0);
-    if(Hook==IntPtr.Zero)throw new Exception("Cannot start recorder");
+    KeyboardHook=SetWindowsHookEx(13,RecordKeyCallback,GetModuleHandle(null),0);
+    if(Hook==IntPtr.Zero||KeyboardHook==IntPtr.Zero)throw new Exception("Cannot start recorder");
     new Thread(()=>{Console.ReadLine();StopRequested=true;}){IsBackground=true}.Start();
     var timer=new System.Windows.Forms.Timer();timer.Interval=30;long lastSnapshot=0;
     timer.Tick+=(s,a)=>{
       try {
         long tick=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        for(int i=Enrich.Count-1;i>=0;i--){var item=Enrich[i];if(tick>=item.Item1||StopRequested){try{((Dictionary<string,object>)item.Item3["capture"])["postState"]=State(item.Item2);Write(new {kind="enrichment",step=item.Item3});}catch{}Enrich.RemoveAt(i);}}
-        if(StopRequested){Application.ExitThread();return;}
         while(Pending.Count>0) {
           var item=Pending.Dequeue();var p=item.Item2.point;if(RecordAll)Window=item.Item3;
           var element=AutomationElement.FromPoint(new System.Windows.Point(p.x,p.y));
           Emit(item.Item1==0x20A?"scroll":item.Item1==0x204?"rightClick":"click",element,item.Item1==0x20A?((short)(item.Item2.mouseData>>16)>0?"up":"down"):null);
         }
+        while(TypedPending.Count>0){
+          var h=TypedPending.Dequeue();if(RecordAll)Window=h;
+          var focused=AutomationElement.FocusedElement;
+          if(focused!=null&&(focused.Current.ControlType==ControlType.Edit||focused.Current.ControlType==ControlType.ComboBox||focused.Current.ControlType==ControlType.Document))Emit("type",focused,null);
+        }
+        for(int i=Enrich.Count-1;i>=0;i--){var item=Enrich[i];if(tick>=item.Item1||StopRequested){try{((Dictionary<string,object>)item.Item3["capture"])["postState"]=State(item.Item2);Write(new {kind="enrichment",step=item.Item3});}catch{}Enrich.RemoveAt(i);}}
+        if(StopRequested){Application.ExitThread();return;}
         var foreground=GetForegroundWindow();
         if(RecordAll?Allowed(foreground):foreground==Window) {
           if(RecordAll)Window=foreground;
           if(tick-lastSnapshot>200){Prior[Window.ToInt64()]=State(Window);lastSnapshot=tick;}
-          bool typed=false;for(int k=0x30;k<=0x5A;k++)if((k<=0x39 || k>=0x41) && (GetAsyncKeyState(k)&0x8000)!=0)typed=true;
-          if((GetAsyncKeyState(8)&0x8000)!=0 || (GetAsyncKeyState(32)&0x8000)!=0)typed=true;
-          long now=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-          if(typed){var focused=AutomationElement.FocusedElement;if(now-LastTyped>800 && focused!=null && (focused.Current.ControlType==ControlType.Edit || focused.Current.ControlType==ControlType.ComboBox || focused.Current.ControlType==ControlType.Document))Emit("type",focused,null);LastTyped=now;}
+
         }
       } catch { /* An element may disappear while an application changes screens. */ }
     };
     timer.Start();Write(new {kind="ready"});
-    Application.Run();UnhookWindowsHookEx(Hook);
+    Application.Run();UnhookWindowsHookEx(Hook);UnhookWindowsHookEx(KeyboardHook);
   }
   static AutomationElement Locate(Dictionary<string,string> t,out string strategy) {
     var root=AutomationElement.FromHandle(Window);
@@ -196,7 +212,7 @@ class Bridge {
         var result=args[0]=="protect"?System.Security.Cryptography.ProtectedData.Protect(bytes,null,System.Security.Cryptography.DataProtectionScope.CurrentUser):System.Security.Cryptography.ProtectedData.Unprotect(bytes,null,System.Security.Cryptography.DataProtectionScope.CurrentUser);
         Console.Write(Convert.ToBase64String(result));return;
       }
-      if(args[0]=="hotkey") {Hook=SetWindowsHookEx(13,KeyCallback,GetModuleHandle(null),0);if(Hook==IntPtr.Zero)throw new Exception("Hotkey unavailable");Write(new {kind="ready"});Application.Run();UnhookWindowsHookEx(Hook);return;}
+      if(args[0]=="hotkey") {Hook=SetWindowsHookEx(13,KeyCallback,GetModuleHandle(null),0);if(Hook==IntPtr.Zero)throw new Exception("Hotkey unavailable");Write(new {kind="ready"});Application.Run();UnhookWindowsHookEx(Hook);UnhookWindowsHookEx(KeyboardHook);return;}
       if(args[0]=="foreground") {var h=GetForegroundWindow();Write(Allowed(h)?new {handle=h.ToInt64().ToString(),title=Title(h),process=ProcessName(h)}:null);return;}
       if(args[0]=="record-all") {RecordAll=true;Record();return;}
       if(args[0]=="windows") {

@@ -73,7 +73,7 @@ test('long live session: 120 actions, three pauses, repeat questions and reconne
   const typing=steps.filter(s=>s.event==='type');expect(typing.length).toBeGreaterThan(0);expect(typing.every(s=>s.typedText===null&&s.typedTextSensitive===true)).toBe(true);
   report.recording={events:steps.length,typedEvents:typing.length,uniqueIds:true,contiguousSequence:true,pending:0,processes:[...new Set(steps.map(s=>s.window.process))],activeDurationMs:finalState.recordElapsedMs};
   drive('move',copy.handle);
-  async function ask(question,targetId,{missing=false,failed=false}={}){
+  async function ask(question,targetId,{missing=false,failed=false,targetWindow=copy}={}){
    const c=student.application.windows().find(p=>p.url().endsWith('/chat.html'));
    if(await student.application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Chat').isVisible())){await c.keyboard.press('Escape');await expect.poll(()=>student.application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Chat').isVisible())).toBe(false);}
    drive('focus',copy.handle);drive('hotkey','0');await expect.poll(()=>student.application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Chat').isVisible())).toBe(true);await expect(c.locator('#question')).toBeFocused();await expect(c.locator('.reply-card')).toBeHidden();
@@ -84,7 +84,7 @@ test('long live session: 120 actions, three pauses, repeat questions and reconne
    const point=await student.panel.evaluate(()=>window.lighthouse.state().then(s=>s.guidePoint));
    if(missing||failed){expect(point).toBeNull();}else{
     await expect(answer.locator('.target-found')).toBeVisible();expect(point).not.toBeNull();
-    const raw=JSON.parse(drive('bounds',copy.handle,targetId).toString());const expected=await student.application.evaluate(({screen},r)=>screen.screenToDipRect(null,r),raw);
+    const raw=JSON.parse(drive('bounds',targetWindow.handle,targetId).toString());const expected=await student.application.evaluate(({screen},r)=>screen.screenToDipRect(null,r),raw);
     expect(Math.abs(point.x-(expected.x+expected.width/2-16))).toBeLessThanOrEqual(2);expect(Math.abs(point.y-(expected.y+expected.height/2-16))).toBeLessThanOrEqual(2);
    }
    report.questions.push({question,targetId,deltas,elapsedMs:Date.now()-began,matched:!missing&&!failed,expectedFailure:failed,missingTarget:missing,answer:text});console.log('Question checkpoint',JSON.stringify(report.questions.at(-1)));
@@ -95,6 +95,10 @@ test('long live session: 120 actions, three pauses, repeat questions and reconne
    if(i===3){const profile=student.profile;killClient(student);student=await launch(profile);await expect.poll(()=>student.panel.evaluate(()=>window.lighthouse.state().then(s=>s.hotkey))).toBe(true);expect((await student.panel.evaluate(()=>window.lighthouse.state())).session.group.code).toBe(code);report.reconnected=true;console.log('Student restarted; encrypted membership restored');}
    await ask(...questions[i]);
   }
+  await bar.locator('#record').click();await expect(bar.locator('#record-label')).toHaveText('Merekam');
+  drive('click',other.handle,'exportReport');await expect.poll(()=>bar.evaluate(()=>window.lighthouse.state().then(s=>s.uploaded))).toBeGreaterThan(0);
+  await bar.locator('#stop').click();await expect(bar.locator('#record')).toBeVisible();
+  await ask('Bagaimana mengekspor laporan?','exportReport',{targetWindow:other});report.crossAppUniqueTarget=true;
   drive('hide',target.handle,'exportReport');drive('hide',other.handle,'exportReport');drive('hide',copy.handle,'exportReport');await ask('Bagaimana mengekspor laporan?','exportReport',{missing:true});
   await bar.locator('#group').click();await expect(a.locator('#ask-enabled')).toBeChecked();await a.locator('#ask-enabled').uncheck();await expect.poll(()=>memberApi(owner,'/v1/group').then(g=>g.group.askEnabled)).toBe(false);await ask('Bagaimana membuka proyek?','openProject',{failed:true});await a.locator('#ask-enabled').check();await expect.poll(()=>memberApi(owner,'/v1/group').then(g=>g.group.askEnabled)).toBe(true);
   await bar.locator('#record').click();await expect(bar.locator('#record-label')).toHaveText('Merekam');const secondId=await bar.evaluate(()=>window.lighthouse.state().then(s=>s.recordingId));expect(secondId).not.toBe(recordingId);expect((await bar.evaluate(()=>window.lighthouse.state())).recordElapsedMs).toBeLessThan(2000);
