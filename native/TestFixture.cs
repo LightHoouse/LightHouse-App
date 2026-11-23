@@ -15,6 +15,13 @@ class TestFixture {
  [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
  [STAThread] static void Main(string[] args){
   SetProcessDPIAware();
+  if(args[0]=="hotkey"){
+   foreach(byte modifier in new byte[]{0x10,0x11,0x12,0x5B,0x5C})keybd_event(modifier,0,2,UIntPtr.Zero);
+   Thread.Sleep(100);
+   keybd_event(0x12,0x38,0,UIntPtr.Zero);Thread.Sleep(80);
+   keybd_event(0x4C,0x26,0,UIntPtr.Zero);Thread.Sleep(120);
+   keybd_event(0x4C,0x26,2,UIntPtr.Zero);keybd_event(0x12,0x38,2,UIntPtr.Zero);return;
+  }
   if(args[0]=="app"){
    var form=new Form{Text=args[1],Width=500,Height=300,StartPosition=FormStartPosition.Manual,Location=new Point(600,100)};
    var save=new Button{Name="saveButton",AccessibleName="Simpan",Text="Simpan",Location=new Point(30,30),Width=150};
@@ -25,6 +32,7 @@ class TestFixture {
    form.Shown+=(s,e)=>{Console.WriteLine(form.Handle.ToInt64());Console.Out.Flush();};Application.Run(form);return;
   }
   var handle=new IntPtr(long.Parse(args[1]));
+  if(args[0]=="focus"){keybd_event(0x12,0,0,UIntPtr.Zero);keybd_event(0x12,0,2,UIntPtr.Zero);SetForegroundWindow(handle);Thread.Sleep(150);return;}
   if(args[0]=="move"){MoveWindow(handle,750,350,500,300,true);return;}
   var root=AutomationElement.FromHandle(handle);
   var element=root.FindFirst(TreeScope.Descendants,new PropertyCondition(AutomationElement.AutomationIdProperty,args[2]));

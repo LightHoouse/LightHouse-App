@@ -19,6 +19,7 @@ class Bridge {
   [DllImport("user32.dll")] static extern int GetWindowText(IntPtr h,StringBuilder s,int n);
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h,out uint p);
   [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point point);
   [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h,uint flags);
   [DllImport("user32.dll")] static extern short GetAsyncKeyState(int key);
   [DllImport("user32.dll")] static extern IntPtr SetWindowsHookEx(int id,HookProc cb,IntPtr module,uint thread);
@@ -28,12 +29,16 @@ class Bridge {
   [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
   static IntPtr Window,Hook;
   static HookProc Callback=OnMouse;
-  static Queue<Tuple<int,MouseData>> Pending=new Queue<Tuple<int,MouseData>>();
+  static HookProc KeyCallback=OnKey;
+  static bool ShortcutDown;
+  static Queue<Tuple<int,MouseData,IntPtr>> Pending=new Queue<Tuple<int,MouseData,IntPtr>>();
+  static bool RecordAll;
   static long LastClick,LastTyped;
   static string LastTarget="";
   static string Title(IntPtr h){var b=new StringBuilder(512);GetWindowText(h,b,b.Capacity);return b.ToString();}
   static string ProcessName(IntPtr h){uint p;GetWindowThreadProcessId(h,out p);return Process.GetProcessById((int)p).ProcessName;}
   static void Write(object value){Console.WriteLine(Json.Serialize(value));Console.Out.Flush();}
+  static bool Allowed(IntPtr h){try{string p=ProcessName(h);return h!=IntPtr.Zero && IsWindowVisible(h) && p!="Lighthouse" && p!="electron" && p!="LighthouseBridge";}catch{return false;}}
   static bool InWindow(AutomationElement e) {
     for(int i=0;e!=null && i<40;i++,e=TreeWalker.RawViewWalker.GetParent(e))
       if(e.Current.NativeWindowHandle==Window.ToInt32())return true;
@@ -49,19 +54,32 @@ class Bridge {
     var t=Target(e); if((string)t["automationId"]=="" && (string)t["name"]=="")return;
     var now=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     if(kind=="click") {
-      string signature=Json.Serialize(t);
+      string signature=ProcessName(Window)+Json.Serialize(t);
       if(now-LastClick<SystemInformation.DoubleClickTime && signature==LastTarget)kind="doubleClick";
       LastClick=now;LastTarget=signature;
     }
-    var row=new Dictionary<string,object>{{"eventId",Guid.NewGuid().ToString()},{"event",kind},{"target",t},{"window",new {process=ProcessName(Window),title=Title(Window)}},{"timestamp",now}};
+    string title=Title(Window);if(title.Length>300)title=title.Substring(0,300);
+    var row=new Dictionary<string,object>{{"eventId",Guid.NewGuid().ToString()},{"event",kind},{"target",t},{"window",new {process=ProcessName(Window),title=title}},{"timestamp",now}};
     if(direction!=null)row["direction"]=direction;
     Write(new {kind="step",step=row});
   }
   static IntPtr OnMouse(int code,IntPtr message,IntPtr data) {
     int m=message.ToInt32();
-    if(code>=0 && (m==0x201 || m==0x204 || m==0x20A) && GetForegroundWindow()==Window) {
+    if(code>=0 && (m==0x201 || m==0x204 || m==0x20A)) {
       var value=(MouseData)Marshal.PtrToStructure(data,typeof(MouseData));
-      Pending.Enqueue(Tuple.Create(m,value));
+      var root=GetAncestor(WindowFromPoint(value.point),2);
+      if(Pending.Count<200 && (RecordAll?Allowed(root):root==Window))Pending.Enqueue(Tuple.Create(m,value,root));
+    }
+    return CallNextHookEx(Hook,code,message,data);
+  }
+  static IntPtr OnKey(int code,IntPtr message,IntPtr data) {
+    if(code>=0 && Marshal.ReadInt32(data)==0x4C) {
+      int m=message.ToInt32();
+      if((m==0x100 || m==0x104) && (GetAsyncKeyState(0x12)&0x8000)!=0) {
+        if(!ShortcutDown){ShortcutDown=true;var h=GetForegroundWindow();Write(new {kind="hotkey",context=Allowed(h)?new {handle=h.ToInt64().ToString(),title=Title(h),process=ProcessName(h)}:null});}
+        return new IntPtr(1);
+      }
+      if((m==0x101 || m==0x105) && ShortcutDown){ShortcutDown=false;return new IntPtr(1);}
     }
     return CallNextHookEx(Hook,code,message,data);
   }
@@ -72,15 +90,17 @@ class Bridge {
     timer.Tick+=(s,a)=>{
       try {
         while(Pending.Count>0) {
-          var item=Pending.Dequeue();var p=item.Item2.point;
+          var item=Pending.Dequeue();var p=item.Item2.point;if(RecordAll)Window=item.Item3;
           var element=AutomationElement.FromPoint(new System.Windows.Point(p.x,p.y));
           Emit(item.Item1==0x20A?"scroll":item.Item1==0x204?"rightClick":"click",element,item.Item1==0x20A?((short)(item.Item2.mouseData>>16)>0?"up":"down"):null);
         }
-        if(GetForegroundWindow()==Window) {
+        var foreground=GetForegroundWindow();
+        if(RecordAll?Allowed(foreground):foreground==Window) {
+          if(RecordAll)Window=foreground;
           bool typed=false;for(int k=0x30;k<=0x5A;k++)if((k<=0x39 || k>=0x41) && (GetAsyncKeyState(k)&0x8000)!=0)typed=true;
           if((GetAsyncKeyState(8)&0x8000)!=0 || (GetAsyncKeyState(32)&0x8000)!=0)typed=true;
           long now=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-          if(typed){var focused=AutomationElement.FocusedElement;if(now-LastTyped>800 && focused!=null && (focused.Current.ControlType==ControlType.Edit || focused.Current.ControlType==ControlType.ComboBox))Emit("type",focused,null);LastTyped=now;}
+          if(typed){var focused=AutomationElement.FocusedElement;if(now-LastTyped>800 && focused!=null && (focused.Current.ControlType==ControlType.Edit || focused.Current.ControlType==ControlType.ComboBox || focused.Current.ControlType==ControlType.Document))Emit("type",focused,null);LastTyped=now;}
         }
       } catch { /* An element may disappear while an application changes screens. */ }
     };
@@ -110,6 +130,9 @@ class Bridge {
     Console.OutputEncoding=new UTF8Encoding(false);SetProcessDPIAware();
     try {
       if(args.Length==0)return;
+      if(args[0]=="hotkey") {Hook=SetWindowsHookEx(13,KeyCallback,GetModuleHandle(null),0);if(Hook==IntPtr.Zero)throw new Exception("Hotkey unavailable");Write(new {kind="ready"});Application.Run();UnhookWindowsHookEx(Hook);return;}
+      if(args[0]=="foreground") {var h=GetForegroundWindow();Write(Allowed(h)?new {handle=h.ToInt64().ToString(),title=Title(h),process=ProcessName(h)}:null);return;}
+      if(args[0]=="record-all") {RecordAll=true;Record();return;}
       if(args[0]=="windows") {
         var rows=new List<object>();
         EnumWindows((h,p)=>{try{string title=Title(h),process=ProcessName(h);if(IsWindowVisible(h) && title!="" && process!="Lighthouse" && process!="electron") rows.Add(new {handle=h.ToInt64().ToString(),title=title,process=process});}catch{}return true;},IntPtr.Zero);

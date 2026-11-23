@@ -7,16 +7,16 @@ A small lab companion that turns an assistant's demonstration into guidance on a
 ## Use it
 
 1. **Assistant:** enter your name, create a group, and share its code.
-2. Open the application you want to demonstrate. Select its window in Lighthouse, name the recording, and click **Record**.
-3. Work in that window. Use **Pause / Resume** as needed, then **Stop / Simpan** to finish uploading.
-4. **Student:** join using your name and the group code. Select the recording and your own application window.
-5. Ask a question or choose **Langkah berikutnya**. Lighthouse finds the recorded control in your live window and highlights it for eight seconds. You perform the action yourself.
+2. Click **Record** on the floating toolbar, then demonstrate across your applications.
+3. Use **Pause / Resume** as needed, then **Stop** to save the session. No manual step notes are needed.
+4. **Student:** join with your name and the group code. Lighthouse stays beside your cursor.
+5. Press **Alt+L** while working to open chat beside your mouse. Ask a question; Lighthouse uses the active application and the latest group recording to highlight a matching control. You perform the action yourself.
 
 No MQTT, database, or AI credentials are needed in the installer. HTTPS connects to `lighthouse-be.yanzz.dev`; the backend owns group membership and AI access. Student questions and visible control names are sent to the service. Typed contents and password fields are not recorded. Membership is encrypted locally using Electron safeStorage and Windows protection. Groups expire after seven days.
 
 ## What works
 
-- Create/join groups with assistant and student roles.
+- Create/join groups with assistant and student roles; assistants can disable questions for assessments.
 - Native Windows UI Automation recording of accessible targets, mouse clicks, typing events without text, and scroll events.
 - Sequential guidance and AI selection from the group's recorded steps.
 - Live target resolution by AutomationId or control type/name, including relocated windows.

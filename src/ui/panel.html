@@ -1,23 +1,17 @@
-<!doctype html>
-<html lang="id"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'"><title>Lighthouse</title><link rel="stylesheet" href="style.css"></head>
-<body><main>
-<header><span class="eyebrow">TEMAN PRAKTIKUM</span><h1>Lighthouse<span class="dot">.</span></h1><p class="muted">Satu group. Belajar langkah demi langkah.</p></header>
-<section id="welcome">
-<label for="name">Nama kamu</label><input id="name" maxlength="120" placeholder="Contoh: Andrian" autocomplete="name">
-<div class="card"><h2>Asisten praktikum</h2><p>Buat group, bagikan kodenya, lalu rekam caramu bekerja.</p><label for="group-name">Nama group</label><input id="group-name" maxlength="120" placeholder="Praktikum hari ini"><button id="create">Create group</button></div>
-<div class="card"><h2>Mahasiswa</h2><label for="code">Kode group</label><input id="code" maxlength="8" placeholder="8 karakter" autocomplete="off"><button id="join" class="secondary">Join group</button></div>
-</section>
-<section id="room" hidden>
-<div class="room-head"><div><h2 id="group-title"></h2><span id="role" class="muted"></span></div><button id="leave" class="quiet">Keluar</button></div>
-<div class="code-row"><span>KODE GROUP</span><strong id="group-code"></strong></div><p id="members" class="muted"></p>
-<label for="window">Aplikasi yang dipakai</label><div class="row"><select id="window"><option value="">Pilih jendela aplikasi</option></select><button id="refresh-windows" class="quiet" aria-label="Muat ulang aplikasi">↻</button></div>
-<p class="hint">Buka aplikasi target dulu, lalu pilih jendelanya. Windows UI Automation; aplikasi dengan kontrol custom mungkin belum terbaca.</p>
-<div id="assistant" hidden class="card"><h2>Rekam demonstrasi</h2><label for="record-name">Judul rekaman</label><input id="record-name" placeholder="Contoh: Membuat dokumen" maxlength="120"><p class="hint">Hanya aktivitas di jendela pilihan yang direkam. Isi ketikan dan password tidak disimpan.</p>
-<div class="actions"><button id="record">Record</button><button id="pause" class="secondary" hidden>Pause</button><button id="resume" class="secondary" hidden>Resume</button><button id="stop" class="secondary" hidden>Stop / Simpan</button></div><p id="record-status" role="status"></p></div>
-<div class="card"><h2>Panduan dari rekaman</h2><label for="recordings">Pilih rekaman</label><select id="recordings"><option value="">Belum ada rekaman</option></select><button id="refresh-recordings" class="quiet">Muat ulang rekaman</button>
-<label for="question">Bingung di langkah mana?</label><input id="question" maxlength="1000" placeholder="Nama tombol atau elemen yang dicari"><div class="actions"><button id="ask">Cari langkah</button><button id="next" class="secondary">Langkah berikutnya</button></div><button id="restart" class="quiet">Mulai dari awal</button>
-<p id="answer" role="status"></p><button id="hide" class="quiet">Tutup panduan</button><p class="hint">Pertanyaan dan nama kontrol yang terlihat dikirim untuk memilih langkah dari rekaman group. Highlight muncul 8 detik; mouse tetap kamu kendalikan.</p></div>
-<button id="close-group" class="danger" hidden>Tutup group untuk semua</button>
-</section>
-<p id="error" role="alert"></p><footer>Windows · <span id="connection">Siap membuat atau bergabung ke group</span></footer>
-</main><script src="panel.js"></script></body></html>
+<!doctype html><html lang="id"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'"><title>Lighthouse</title><link rel="stylesheet" href="style.css"></head><body class="setup">
+<div class="windowbar"><span class="wordmark"><i class="brand"></i> lighthouse</span><button id="window-close" class="icon" aria-label="Sembunyikan">×</button></div>
+<main id="welcome"><div class="intro"><span class="eyebrow">BELAJAR, TANPA TERTINGGAL.</span><h1>Teman di<br>samping kursormu<span class="gold">.</span></h1></div>
+<div class="segments" role="tablist" aria-label="Peran"><button id="join-tab" role="tab" aria-selected="true">Gabung group</button><button id="create-tab" role="tab" aria-selected="false">Buat group</button></div>
+<form id="entry"><label for="name">Nama kamu</label><input id="name" maxlength="120" placeholder="Nama panggilan" autocomplete="name" required>
+<div id="join-fields"><label for="code">Kode group</label><input id="code" maxlength="8" placeholder="Masukkan 8 karakter" autocomplete="off" spellcheck="false"></div>
+<div id="create-fields" hidden><label for="group-name">Nama group</label><input id="group-name" maxlength="120" placeholder="Praktikum hari ini"></div>
+<button id="enter" class="primary wide" type="submit">Gabung <span>↗</span></button></form>
+<p id="entry-note" class="footnote">Bawa pertanyaanmu. Lighthouse menemanimu.</p></main>
+<main id="room" hidden><div class="room-title"><span class="eyebrow" id="role"></span><h1 id="group-title"></h1></div>
+<div class="invite"><span>Kode group</span><button id="copy-code" aria-label="Salin kode group"><strong id="group-code"></strong><span id="copy-label">Salin ↗</span></button></div>
+<div class="people"><span id="member-count"></span><div id="members"></div></div>
+<label class="toggle-row" id="ask-setting" hidden><span>Izinkan pertanyaan mahasiswa</span><input type="checkbox" id="ask-enabled" checked></label>
+<button id="open-chat" class="primary wide" hidden>Tanya Lighthouse <span class="keys">Alt L</span></button>
+<button id="return-recorder" class="primary wide" hidden>Kembali merekam <span>↗</span></button>
+<p id="hotkey-note" class="footnote"></p><div class="room-actions"><button id="leave" class="text-button">Keluar group</button><button id="close-group" class="text-button danger" hidden>Tutup sesi</button></div></main>
+<p id="error" class="error" role="alert"></p><script src="panel.js"></script></body></html>
