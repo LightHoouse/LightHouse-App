@@ -52,6 +52,7 @@ jobs:
       - name: Checksum verified installer
         shell: pwsh
         run: |
+          Get-ChildItem release/*.exe | Rename-Item -NewName { $_.Name.Replace(' ', '.') }
           Get-ChildItem release/*.exe | ForEach-Object {
             $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
             "$hash  $($_.Name)"
@@ -85,3 +86,4 @@ jobs:
         run: |
           printf 'Windows x64 preview built from %s.\n\nVerified source and packaged Electron smoke tests: %s\n\nIncludes the desktop panel and text guide. Live UI targeting, recording, step verification, and the classroom dashboard are not implemented yet. This installer is unsigned.\n\nDownload the .exe and SHA256SUMS.txt below.\n' "$COMMIT" "$RUN_URL" > notes.md
           gh release create "v$VERSION" release/*.exe release/SHA256SUMS.txt --repo "$GH_REPO" --target "$COMMIT" --title "Lighthouse $VERSION" --notes-file notes.md --prerelease
+
