@@ -1,14 +1,9 @@
-# Lighthouse App
+# Lighthouse desktop
 
-Electron desktop Action Agent untuk mode guide-only. App menerima command MQTT per student, menampilkan overlay click-through, dan mengirim ack setelah guide ditampilkan. App tidak melakukan klik atau mengetik untuk mahasiswa.
+Jalankan `npm ci`, `npm test`, lalu `npm run dev`. Paket Windows: `npm run package`, hasil ada di `release/`.
 
-## Run
+Tes Playwright membuka panel Electron, memeriksa preload sandbox, mengklik demo panduan, memeriksa teks overlay, lalu menutupnya. CI Windows menjalankan tes pada source dan executable yang dipaketkan.
 
-```bash
-npm install
-npm run check
-npm run dev
-npm run package
-```
+Status: panel dan panduan teks (`say`) berfungsi. Resolusi locator live UIA/CDP, Record Agent, step verification, dan dashboard kelas belum tersedia. Command pointer gagal dengan `LOCATOR_RESOLVER_UNAVAILABLE`; aplikasi tidak mengarang koordinat target. Installer bukan bukti bahwa alur praktikum lengkap sudah tersedia.
 
-Set `MQTT_URL`, `MQTT_USERNAME`, `MQTT_PASSWORD`, `LIGHTHOUSE_SESSION_ID`, dan `LIGHTHOUSE_STUDENT_ID` pada environment proses Electron. Release bertag `vX.Y.Z` dipaketkan oleh GitHub Actions dan diunggah ke GitHub Releases.
+MQTT menggunakan environment proses: MQTT_URL (mqtts), MQTT_USERNAME, MQTT_PASSWORD, LIGHTHOUSE_SESSION_ID, LIGHTHOUSE_STUDENT_ID. Tidak ada credential di installer. Mode guide-only, command expired dan scope yang salah ditolak. Dedup command masih sebatas sesi proses; belum persisten melewati restart.

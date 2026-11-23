@@ -23,7 +23,6 @@ jobs:
       - run: npm run build
 
   package:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs: verify
     runs-on: windows-latest
     steps:
@@ -33,8 +32,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm test
       - run: npm run package
+      - name: Smoke test packaged executable
+        shell: pwsh
+        run: |
+          $env:LIGHTHOUSE_TEST_EXE = "$pwd/release/win-unpacked/Lighthouse.exe"
+          npx playwright test
       - uses: actions/upload-artifact@v4
         with:
           name: lighthouse-windows-installer
-          path: dist/*.exe
+          path: release/*.exe
+          if-no-files-found: error

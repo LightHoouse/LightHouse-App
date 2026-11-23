@@ -1,7 +1,6 @@
 name: Release Windows app
 
 on:
-  workflow_dispatch:
   push:
     tags: ["v*.*.*"]
 
@@ -19,8 +18,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: npm test
       - run: npm run package
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.exe
+          files: release/*.exe
+          fail_on_unmatched_files: true
           generate_release_notes: true
