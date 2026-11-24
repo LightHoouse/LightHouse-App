@@ -66,7 +66,7 @@ function freezeRecording(){recordElapsedMs=elapsedRecording();recording=false;}
 function state(){return {lastExport,importPreview,session:session?{role:session.role,group:session.group}:null,recording,recordingId,captured,uploaded,pending:queue.length,recordError,recordElapsedMs:elapsedRecording(),hotkey,lastEvent,hotkeyAt,chatError,guideStatus,guidePoint:guidePoint||null};}
 function update(){for(const w of [panel,toolbar,chat])if(w&&!w.isDestroyed())w.webContents.send('lab:state',state());}
 function hideGuide(){gesturePath=undefined;guideStatus='dismissed';guidePoint=undefined;const observer=guideWatcher;guideWatcher=undefined;observer?.kill();marker.hide();if(markerTimer)clearTimeout(markerTimer);}
-function hideChat(){guideVersion++;chat.hide();hideGuide();}
+function hideChat(){guideVersion++;chat.hide();hideGuide();if(session?.role==='student'&&!panel.isVisible())buddy.showInactive();}
 function showManagement(){showPanel();panel.webContents.send('lab:management-open');}
 function showPanel(){panel.show();panel.focus();panel.webContents.send('lab:panel-open');update();}
 async function flush(){if(upload)return upload;upload=(async()=>{while(queue.length){await api(`/v1/recordings/${recordingId}/steps`,queue[0]);const sent=queue.shift() as any;if(!sent?.enrichment)uploaded++;recordError='';persistRecorder();update();}})();try{await upload;}catch(e){recordError='Menghubungkan ulang?';update();throw e;}finally{upload=undefined;}}
@@ -123,6 +123,10 @@ async function openChat(capturedContext?:WindowInfo){
  if(capturedContext)studentContext=capturedContext;
  else try{const current=JSON.parse(execFileSync(nativePath(),['foreground'],{windowsHide:true,timeout:2000,encoding:'utf8'}).trim().replace(/^\uFEFF/,''));if(current)studentContext=current;}catch{}
  chatAnchor=pointer;sizeChat(false);
+ // The question surface owns the top layer while it is open. The helper cursor
+ // is hidden for this interaction so it cannot sit over the composer or reply.
+ buddy.hide();
+ chat.setAlwaysOnTop(true,'screen-saver');
  chat.webContents.send('chat:open',{context:studentContext?.process||'Desktop'});chat.show();chat.focus();chat.webContents.focus();chat.webContents.send('chat:open',{context:studentContext?.process||'Desktop'});update();
 }
 function syncRole(){
@@ -231,7 +235,7 @@ app.whenReady().then(async()=>{
  setInterval(()=>{if(session?.role==='assistant')void management().catch(()=>{});},30000).unref();
  setInterval(()=>{if(recordingId&&!upload){persistRecorder();if(stopRequested)void stop().catch(()=>{});else if(queue.length)void flush().catch(()=>{});}},5000).unref();
  setInterval(()=>{
-  if(session?.role!=='student'||panel.isVisible()){buddy.hide();buddyPosition=undefined;return;}
+  if(session?.role!=='student'||panel.isVisible()||chat.isVisible()){buddy.hide();buddyPosition=undefined;return;}
   const p=screen.getCursorScreenPoint();
   if(chat.isVisible()&&(p.x!==chatAnchor.x||p.y!==chatAnchor.y)){chatAnchor=p;sizeChat(chatSize.expanded,chatSize.width,chatSize.height);}
   const a=screen.getDisplayNearestPoint(guidePoint||p).workArea;
