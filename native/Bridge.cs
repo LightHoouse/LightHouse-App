@@ -157,7 +157,7 @@ class Bridge {
           if(item.Item1==0x201||item.Item1==0x204||item.Item1==0x207){Pressed=item;Stroke.Clear();Stroke.Add(item.Item2.point);continue;}
           if(item.Item1==0x200){if(Pressed!=null&&Stroke.Count<255)Stroke.Add(item.Item2.point);continue;}
           var finish=item.Item2.point;bool drag=false;int message=item.Item1;
-          if(message==0x202||message==0x205||message==0x208){if(Pressed==null)continue;var down=Pressed;Pressed=null;if(down.Item3!=item.Item3)continue;drag=(message==0x202||message==0x208)&&Math.Abs(finish.x-down.Item2.point.x)+Math.Abs(finish.y-down.Item2.point.y)>8;item=down;}
+          if(message==0x202||message==0x205||message==0x208){if(Pressed==null)continue;var down=Pressed;Pressed=null;if(down.Item3!=item.Item3)continue;drag=(message==0x202||message==0x208)&&(Math.Abs(finish.x-down.Item2.point.x)+Math.Abs(finish.y-down.Item2.point.y)>8||Stroke.Exists(pt=>Math.Abs(pt.x-down.Item2.point.x)+Math.Abs(pt.y-down.Item2.point.y)>8));item=down;}
           var p=item.Item2.point;if(RecordAll)Window=item.Item3;
           var element=AutomationElement.FromPoint(new System.Windows.Point(p.x,p.y));
           // FromPoint may see a newly appeared overlay; resolve in the actual event window.
