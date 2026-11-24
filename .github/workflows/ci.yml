@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: LightHoouse/LightHosue-Backend
-          ref: 11025be16af996ce5883cc3d77c2483158e6e2a2
+          ref: 059d3f2865111915d91465021587d02fde718672
           path: backend-test
       - name: Prepare isolated backend for desktop E2E
         run: |
@@ -78,7 +78,7 @@ jobs:
             platform = 'windows-x64'
             electron = (node -p "require('./node_modules/electron/package.json').version")
             workflow = "https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
-            verification = @('typecheck', 'two-client-source-e2e', 'two-client-packaged-e2e', 'native-uia-record-and-resolve')
+            verification = @('typecheck', 'two-client-source-e2e', 'two-client-packaged-e2e', 'native-uia-record-and-resolve', 'offline-crash-recovery', 'observed-outcome-regression', 'portable-import-export', 'classroom-cache', 'native-drag-scroll')
           } | ConvertTo-Json | Set-Content -Encoding utf8 release/release-manifest.json
           Get-ChildItem release/*.exe,release/release-manifest.json | ForEach-Object {
             $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()

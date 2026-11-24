@@ -24,7 +24,7 @@ test.beforeAll(async()=>{
 test.afterAll(async()=>{if(backend){backend.stdin.write('stop');await new Promise(resolve=>{backend.once('exit',resolve);setTimeout(()=>{if(backend.exitCode===null)execFileSync('taskkill',['/pid',String(backend.pid),'/t','/f']);resolve();},10000).unref();});}});
 async function launch(existingProfile){
  const profile=existingProfile||mkdtempSync(path.join(tmpdir(),'lighthouse-e2e-'));
- const env={...process.env,LIGHTHOUSE_PROFILE_DIR:profile,LIGHTHOUSE_BACKEND_URL:backendUrl};delete env.ELECTRON_RUN_AS_NODE;
+ const env={...process.env,LIGHTHOUSE_PROFILE_DIR:profile,LIGHTHOUSE_RECORDINGS_DIR:path.join(profile,'recordings'),LIGHTHOUSE_BACKEND_URL:backendUrl};delete env.ELECTRON_RUN_AS_NODE;
  const executablePath=process.env.LIGHTHOUSE_TEST_EXE;
  const application=await electron.launch({...(executablePath?{executablePath}:{}),args:executablePath?[]:[path.resolve('.')],env});
  let panel;await expect.poll(async()=>{panel=application.windows().find(p=>p.url().endsWith('/panel.html'));return !!panel;}).toBe(true);
@@ -47,12 +47,14 @@ test('Windows Calculator: real capture, streaming, moving chat and companion tar
  test.setTimeout(180000);const owner=await launch(),student=await launch();
  const report={application:'Windows Calculator',startedAt:new Date().toISOString()};
  try{
- const windows=JSON.parse(execFileSync(path.resolve('native/bin/LighthouseBridge.exe'),['windows'],{encoding:'utf8'}));const calc=windows.find(w=>w.title==='Calculator');expect(calc).toBeTruthy();
+ const windows=JSON.parse(execFileSync(path.resolve('native/bin/LighthouseBridge.exe'),['windows'],{encoding:'utf8'}));const calc=windows.filter(w=>w.title==='Calculator').find(w=>{try{return drive('inspect',w.handle).toString().includes('equalButton');}catch{return false;}});expect(calc).toBeTruthy();
  const a=owner.panel,s=student.panel;await a.locator('#create-tab').click();await a.locator('#name').fill('Real app test');await a.locator('#group-name').fill('Calculator test');await a.locator('#enter').click();
  const bar=owner.application.windows().find(p=>p.url().endsWith('/toolbar.html'));await expect(bar.locator('#copy')).toHaveText(/^[A-Z0-9]{8}$/);const code=await bar.locator('#copy').innerText();
  await s.locator('#name').fill('Calculator student');await s.locator('#code').fill(code);await s.locator('#enter').click();await expect.poll(()=>s.evaluate(()=>window.lighthouse.state().then(s=>s.hotkey))).toBe(true);
  await bar.locator('#record').click();await expect(bar.locator('#record-label')).toHaveText('Merekam');const rid=await bar.evaluate(()=>window.lighthouse.state().then(s=>s.recordingId));
- for(const id of ['clearButton','num7Button','plusButton','num8Button','equalButton'])drive('click',calc.handle,id);
+ drive('focus',calc.handle);await bar.waitForTimeout(1500);
+ for(const id of ['clearButton','num7Button','plusButton','num8Button','equalButton']){drive('click',calc.handle,id);await bar.waitForTimeout(800);console.log('Capture checkpoint',id,await bar.evaluate(()=>window.lighthouse.state().then(s=>({captured:s.captured,uploaded:s.uploaded,last:s.lastEvent,error:s.recordError}))));}
+ console.log('Recorded targets',(await memberApi(owner,`/v1/recordings/${rid}/steps`)).steps.map(s=>s.target.automationId));
  await expect.poll(()=>bar.evaluate(()=>window.lighthouse.state().then(s=>s.uploaded))).toBeGreaterThanOrEqual(5);await bar.locator('#stop').click();await expect(bar.locator('#record')).toBeVisible();
  const data=await memberApi(owner,`/v1/recordings/${rid}/steps`);report.targets=data.steps.map(x=>x.target.automationId);expect(report.targets).toContain('equalButton');
  drive('focus',calc.handle);drive('hotkey','0');const c=student.application.windows().find(p=>p.url().endsWith('/chat.html'));await expect(c.locator('#question')).toBeFocused();await expect(c.locator('.reply-card')).toBeHidden();

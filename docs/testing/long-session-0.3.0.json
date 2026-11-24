@@ -1,0 +1,178 @@
+{
+  "startedAt": "2026-11-23T17:52:32.935Z",
+  "backend": "https://lighthouse-be.yanzz.dev",
+  "executable": "source",
+  "pauses": [
+    {
+      "number": 1,
+      "frozenMs": 28268.6558,
+      "capturedUnchanged": true
+    },
+    {
+      "number": 2,
+      "frozenMs": 56227.3853,
+      "capturedUnchanged": true
+    },
+    {
+      "number": 3,
+      "frozenMs": 84481.81210000001,
+      "capturedUnchanged": true
+    }
+  ],
+  "questions": [
+    {
+      "question": "Bagaimana membuka proyek?",
+      "targetId": "openProject",
+      "deltas": 14,
+      "elapsedMs": 17077,
+      "matched": true,
+      "expectedFailure": false,
+      "missingTarget": false,
+      "answer": "Langkah yang direkam adalah mengeklik tombol “Buka proyek”.\nKlik target yang ditunjuk kursor biru"
+    },
+    {
+      "question": "Bagaimana menambahkan data?",
+      "targetId": "addData",
+      "deltas": 14,
+      "elapsedMs": 22676,
+      "matched": true,
+      "expectedFailure": false,
+      "missingTarget": false,
+      "answer": "Klik tombol “Tambah data” untuk memulai penambahan data.\nKlik target yang ditunjuk kursor biru"
+    },
+    {
+      "question": "Bagaimana menghitung total?",
+      "targetId": "calculateTotal",
+      "deltas": 12,
+      "elapsedMs": 16016,
+      "matched": true,
+      "expectedFailure": false,
+      "missingTarget": false,
+      "answer": "Klik tombol “Hitung total” untuk menghitung total.\nKlik target yang ditunjuk kursor biru"
+    },
+    {
+      "question": "Bagaimana meninjau hasil?",
+      "targetId": "reviewResult",
+      "deltas": 12,
+      "elapsedMs": 15577,
+      "matched": true,
+      "expectedFailure": false,
+      "missingTarget": false,
+      "answer": "Klik tombol “Tinjau hasil” untuk membuka hasil.\nKlik target yang ditunjuk kursor biru"
+    },
+    {
+      "question": "Bagaimana mengekspor laporan?",
+      "targetId": "exportReport",
+      "deltas": 15,
+      "elapsedMs": 12995,
+      "matched": true,
+      "expectedFailure": false,
+      "missingTarget": false,
+      "answer": "Klik tombol “Ekspor laporan” untuk memulai proses ekspor laporan.\nKlik target yang ditunjuk kursor biru"
+    },
+    {
+      "question": "Bagaimana menyimpan dokumen?",
+      "targetId": "saveButton",
+      "deltas": 10,
+      "elapsedMs": 13371,
+      "matched": true,
+      "expectedFailure": false,
+      "missingTarget": false,
+      "answer": "Klik tombol Simpan untuk menyimpan dokumen.\nKlik target yang ditunjuk kursor biru"
+    },
+    {
+      "question": "Bagaimana mengekspor laporan?",
+      "targetId": "exportReport",
+      "deltas": 11,
+      "elapsedMs": 11979,
+      "matched": true,
+      "expectedFailure": false,
+      "missingTarget": false,
+      "answer": "Klik tombol Ekspor laporan untuk mengekspor laporan.\nKlik target yang ditunjuk kursor biru"
+    },
+    {
+      "question": "Bagaimana mengekspor laporan?",
+      "targetId": "exportReport",
+      "deltas": 12,
+      "elapsedMs": 12657,
+      "matched": false,
+      "expectedFailure": false,
+      "missingTarget": true,
+      "answer": "Untuk mengekspor laporan, klik tombol Ekspor laporan.\nTarget tidak terlihat atau ambigu."
+    },
+    {
+      "question": "Bagaimana membuka proyek?",
+      "targetId": "openProject",
+      "deltas": 0,
+      "elapsedMs": 3440,
+      "matched": false,
+      "expectedFailure": true,
+      "missingTarget": false,
+      "answer": "Asisten sedang menonaktifkan bantuan untuk sesi ini."
+    },
+    {
+      "question": "Bagaimana membuka proyek?",
+      "targetId": "openProject",
+      "deltas": 11,
+      "elapsedMs": 10391,
+      "matched": true,
+      "expectedFailure": false,
+      "missingTarget": false,
+      "answer": "Klik tombol “Buka proyek” untuk membuka proyek.\nKlik target yang ditunjuk kursor biru"
+    },
+    {
+      "question": "Bagaimana membuka proyek?",
+      "targetId": "openProject",
+      "deltas": 0,
+      "elapsedMs": 3963,
+      "matched": false,
+      "expectedFailure": true,
+      "missingTarget": false,
+      "answer": "Group sudah ditutup atau kedaluwarsa."
+    }
+  ],
+  "checkpoints": [
+    {
+      "block": 1,
+      "captured": 33,
+      "uploaded": 33,
+      "elapsedMs": 28239.415999999997
+    },
+    {
+      "block": 2,
+      "captured": 66,
+      "uploaded": 66,
+      "elapsedMs": 56207.4714
+    },
+    {
+      "block": 3,
+      "captured": 99,
+      "uploaded": 99,
+      "elapsedMs": 84463.77109999998
+    },
+    {
+      "block": 4,
+      "captured": 132,
+      "uploaded": 132,
+      "elapsedMs": 112565.28270000003
+    }
+  ],
+  "recording": {
+    "events": 132,
+    "typedEvents": 12,
+    "uniqueIds": true,
+    "contiguousSequence": true,
+    "pending": 0,
+    "processes": [
+      "LighthouseFixture",
+      "LighthouseOtherFixture"
+    ],
+    "activeDurationMs": 112591.08160000002
+  },
+  "reconnected": true,
+  "crossAppUniqueTarget": true,
+  "secondRecordingEvents": 5,
+  "closed": true,
+  "passed": true,
+  "wallTimeMs": 302736
+}

@@ -25,7 +25,7 @@ async function ask() {
     const result = await api.guide({question, requestId});
     pending.removeAttribute('aria-label');pending.classList.remove('pending'); pending.textContent = plain(result.message || result.instruction);
     if (result.reason) { const note=document.createElement('div'); note.className='response-note'; note.textContent=result.reason; pending.append(note); }
-    if (result.resolved) { const label=document.createElement('span'); label.className='target-found'; label.textContent='Klik target yang ditunjuk kursor biru'; pending.append(label); }
+    if (result.resolved) { const label=document.createElement('span'); label.className='target-found'; label.textContent=result.event==='dragDrop'?'Tekan, tahan, lalu tarik mengikuti kursor biru':result.event==='scroll'?'Scroll mengikuti arah kursor biru':'Klik target yang ditunjuk kursor biru'; pending.append(label); }
     pending.dataset.source = result.source || ''; pending.dataset.resolved = String(!!result.resolved);
   } catch (error) {
     pending.removeAttribute('aria-label');pending.classList.remove('pending'); pending.classList.add('failed');
@@ -49,6 +49,6 @@ document.addEventListener('keydown',event=>{if(event.key==='Escape')void api.hid
 api.onChatOpen(state=>{document.body.classList.add('compact');$('context').textContent=state.context;void fit();$('question').focus();});
 document.fonts.ready.then(fit);
 
-api.onTarget(event=>{const label=[...document.querySelectorAll('.target-found')].at(-1);if(label)label.textContent=event.status==='clicked'?'Target sudah diklik':'Target berubah. Tanya lagi untuk menunjuk ulang.';});
+api.onTarget(event=>{const label=[...document.querySelectorAll('.target-found')].at(-1);if(label)label.textContent=event.status==='clicked'?'Target sudah diklik':event.status==='gesture'?'Gerakan sudah teramati':'Target berubah. Tanya lagi untuk menunjuk ulang.';});
 
 api.onPlacement(position=>{document.body.classList.toggle('above',position.above);document.body.classList.toggle('left',position.left);});

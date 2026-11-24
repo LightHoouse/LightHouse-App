@@ -1,3 +1,5 @@
+<p align="center"><img src="src/ui/logo.png" alt="Lighthouse - guide cursor for computer labs" width="600"></p>
+
 # Lighthouse Desktop 🔦
 
 A small lab companion that turns an assistant's demonstration into guidance on a student's own screen.
@@ -57,7 +59,7 @@ Set `LIGHTHOUSE_E2E_BACKEND_DIR` if the backend checkout is elsewhere. `LIGHTHOU
 
 Push a `vX.Y.Z` tag matching `package.json` after adding `docs/releases/X.Y.Z.md`. CI checks the source, records and resolves real native controls with two clients, packages the app, and repeats the test against the packaged executable. Only that tested installer is published, with `release-manifest.json` and `SHA256SUMS.txt`. Branch builds create artifacts without publishing releases. There is no automatic updater yet.
 
-Typography uses bundled [DM Sans](https://fonts.google.com/specimen/DM+Sans), licensed under the [SIL Open Font License](src/ui/fonts/OFL.txt). Cursor styling is inspired by [Clicky](https://github.com/farzaa/clicky).
+Typography uses bundled [Quicksand](https://fonts.google.com/specimen/Quicksand), licensed under the [SIL Open Font License](src/ui/fonts/Quicksand-OFL.txt). Cursor styling is inspired by [Clicky](https://github.com/farzaa/clicky).
 
 ### Extended desktop trial
 
@@ -76,3 +78,24 @@ Results are written to `test-results/long-session-report.json`; screenshots acco
 The chat bubble follows your mouse while open. The answer card flips above the input near the bottom edge and shifts left near the right edge. After an answer, the blue companion travels to the resolved control; your real pointer stays under your control. Use Enter to send and Escape to dismiss.
 
 For the optional Windows Calculator test, open Calculator, set `LIGHTHOUSE_REAL_E2E=1` and `LIGHTHOUSE_E2E_URL`, then run `npm test`. Use an empty Calculator session; the test enters 7 + 8.
+
+## Local classroom tools
+
+Open **Kelola kelas** from the group panel to see members and the latest 200 questions. The assistant's laptop keeps an encrypted cache for offline reading; new questions still require the server. Students see a notice that the assistant can read their questions.
+
+**Stop** automatically writes a `.lighthouse` JSON recording to `Documents/Lighthouse/Recordings`. Use **Folder rekaman** to find it. Copy the file to another laptop, create a group as an assistant, and choose **Impor rekaman**. Import validates the version and every action, generates new event IDs, and uploads a new session to the current group. Files contain accessible target context and observed states; they contain no membership token, API credential or typed input contents. Treat app labels and window titles in a shared file as classroom data. If offline, the file is still saved and upload/Stop completes on reconnect. Importing into a group needs connectivity.
+
+Recordings include scroll direction/delta and drag start/end normalized to an accessible target. The blue companion animates the recorded path on the student's live target, without moving their real pointer. Scroll is acknowledged only inside the target in the recorded direction; drag requires a matching press/release near both endpoints. Canvas targets must expose a unique UI Automation identity; arbitrary Figma canvases, changed zoom/pan or layouts are not certified. The format stores target-relative points, not portable document object coordinates.
+
+| Shortcut | Action |
+| --- | --- |
+| Alt+L | Student chat |
+| Alt+G | Group / classroom panel |
+| Alt+H | Hide panel and guidance |
+| Alt+Shift+K | Shortcut page |
+| Alt+Shift+R | Assistant record / pause / resume |
+| Alt+Shift+S | Assistant stop and save |
+| Alt+Shift+O | Assistant recording folder |
+| Enter / Esc | Send question / close chat |
+
+The shortcut page reports registration conflicts. Shortcuts do not execute actions in the student's application.

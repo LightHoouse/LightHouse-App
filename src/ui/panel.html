@@ -1,12 +1,12 @@
 <!doctype html><html lang="id"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'"><title>Lighthouse</title><link rel="stylesheet" href="style.css"></head><body class="setup">
-<div class="windowbar"><span class="wordmark"><i class="brand"></i> lighthouse</span><button id="window-close" class="icon" aria-label="Sembunyikan">×</button></div>
+<div class="windowbar"><span class="wordmark"><img class="wordmark-image" src="logo.png" alt="Lighthouse"></span><button id="window-close" class="icon" aria-label="Sembunyikan">×</button></div>
 <main id="welcome"><div class="intro"><span class="eyebrow">BELAJAR, TANPA TERTINGGAL.</span><h1>Teman di<br>samping kursormu<span class="gold">.</span></h1></div>
 <div class="segments" role="tablist" aria-label="Peran"><button id="join-tab" role="tab" aria-selected="true">Gabung group</button><button id="create-tab" role="tab" aria-selected="false">Buat group</button></div>
 <form id="entry"><label for="name">Nama kamu</label><input id="name" maxlength="120" placeholder="Nama panggilan" autocomplete="name" required>
 <div id="join-fields"><label for="code">Kode group</label><input id="code" maxlength="8" placeholder="Masukkan 8 karakter" autocomplete="off" spellcheck="false"></div>
 <div id="create-fields" hidden><label for="group-name">Nama group</label><input id="group-name" maxlength="120" placeholder="Praktikum hari ini"></div>
 <button id="enter" class="primary wide" type="submit">Gabung <span>↗</span></button></form>
-<p id="entry-note" class="footnote">Bawa pertanyaanmu. Lighthouse menemanimu.</p></main>
+<p id="entry-note" class="footnote">Pertanyaan dapat dilihat asisten kelas.</p></main>
 <main id="room" hidden><div class="room-title"><span class="eyebrow" id="role"></span><h1 id="group-title"></h1></div>
 <div class="invite"><span>Kode group</span><button id="copy-code" aria-label="Salin kode group"><strong id="group-code"></strong><span id="copy-label">Salin ↗</span></button></div>
 <div class="people"><span id="member-count"></span><div id="members"></div></div>
@@ -14,4 +14,7 @@
 <button id="open-chat" class="primary wide" hidden>Tanya Lighthouse <span class="keys">Alt L</span></button>
 <button id="return-recorder" class="primary wide" hidden>Kembali merekam <span>↗</span></button>
 <p id="hotkey-note" class="footnote"></p><div class="room-actions"><button id="leave" class="text-button">Keluar group</button><button id="close-group" class="text-button danger" hidden>Tutup sesi</button></div></main>
+<nav class="utility-nav"><button id="manage-nav" hidden>Kelola kelas</button><button id="shortcuts-nav">Shortcut</button></nav>
+<main id="management" hidden><div class="section-heading"><h2>Kelola kelas</h2><button class="text-button" id="manage-back">Kembali</button></div><p class="muted" id="management-status"></p><div class="management-actions"><button id="refresh-management">Perbarui</button><button id="open-recordings">Folder rekaman</button><button id="import-recording">Impor rekaman</button></div><h3>Anggota</h3><div id="management-members" class="activity-list"></div><h3>Pertanyaan mahasiswa</h3><p class="muted">Riwayat tersimpan di laptop asisten. Pertanyaan baru memerlukan koneksi.</p><div id="management-questions" class="activity-list"></div></main>
+<main id="shortcuts-page" hidden><div class="section-heading"><h2>Shortcut</h2><button class="text-button" id="shortcuts-back">Kembali</button></div><p class="muted">Shortcut global aktif saat Lighthouse berjalan. Status ketersediaan terlihat di bawah.</p><div id="shortcut-list"></div></main>
 <p id="error" class="error" role="alert"></p><script src="panel.js"></script></body></html>

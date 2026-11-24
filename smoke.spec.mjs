@@ -1,7 +1,7 @@
 import {test,expect,_electron as electron} from '@playwright/test';
 import {spawn,execFileSync} from 'node:child_process';
 import {createInterface} from 'node:readline';
-import {mkdtempSync,mkdirSync,copyFileSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,copyFileSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 
@@ -23,14 +23,14 @@ test.beforeAll(async()=>{
 test.afterAll(async()=>{if(backend){backend.stdin.write('stop');await new Promise(resolve=>{backend.once('exit',resolve);setTimeout(()=>{if(backend.exitCode===null)execFileSync('taskkill',['/pid',String(backend.pid),'/t','/f']);resolve();},10000).unref();});}});
 async function launch(existingProfile){
  const profile=existingProfile||mkdtempSync(path.join(tmpdir(),'lighthouse-e2e-'));
- const env={...process.env,LIGHTHOUSE_PROFILE_DIR:profile,LIGHTHOUSE_BACKEND_URL:backendUrl};delete env.ELECTRON_RUN_AS_NODE;
+ const env={...process.env,LIGHTHOUSE_PROFILE_DIR:profile,LIGHTHOUSE_RECORDINGS_DIR:path.join(profile,'recordings'),LIGHTHOUSE_BACKEND_URL:backendUrl};delete env.ELECTRON_RUN_AS_NODE;
  const executablePath=process.env.LIGHTHOUSE_TEST_EXE;
  const application=await electron.launch({...(executablePath?{executablePath}:{}),args:executablePath?[]:[path.resolve('.')],env});
  let panel;await expect.poll(async()=>{panel=application.windows().find(p=>p.url().endsWith('/panel.html'));return !!panel;}).toBe(true);
  await expect(panel.locator('#enter')).toBeEnabled();return {application,panel,profile};
 }
-async function fixture(title,executable=fixturePath){
- const child=spawn(executable,['app',title],{windowsHide:false,stdio:['ignore','pipe','pipe']});
+async function fixture(title,executable=fixturePath,mode){
+ const child=spawn(executable,['app',title,...(mode?[mode]:[])],{windowsHide:false,stdio:['ignore','pipe','pipe']});
  const handle=await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(new Error('Fixture did not open')),15000);createInterface({input:child.stdout}).once('line',line=>{clearTimeout(timeout);resolve(line.trim());});child.once('error',reject);});
  return {child,handle};
 }
@@ -120,4 +120,31 @@ test('offline action queue survives process crash and uploads once after restart
   expect((await bar.evaluate(()=>window.lighthouse.state())).uploaded).toBe(saved.captured);
   await bar.evaluate(()=>window.lighthouse.stop());
  }finally{target?.child.kill();const proc=owner.application.process();if(proc.exitCode===null)try{execFileSync('taskkill',['/pid',String(proc.pid),'/t','/f'],{stdio:'ignore'});}catch{}}
+});
+
+
+test('portable session, local management, shortcuts and native drag/scroll guidance',async()=>{
+ test.setTimeout(180000);let owner=await launch(),student=await launch(),target,copy;
+ try{
+  const a=owner.panel,s=student.panel;await a.evaluate(()=>document.fonts.ready);expect(await a.locator('body').evaluate(el=>getComputedStyle(el).fontFamily)).toContain('Quicksand');await a.screenshot({path:'test-results/welcome.png'});await a.locator('#create-tab').click();await a.locator('#name').fill('Gesture assistant');await a.locator('#enter').click();
+  const bar=owner.application.windows().find(p=>p.url().endsWith('/toolbar.html'));const code=await bar.locator('#copy').innerText();
+  await s.locator('#name').fill('Gesture student');await s.locator('#code').fill(code);await s.locator('#enter').click();
+  target=await fixture('Gesture assistant',fixturePath,'canvas');copy=await fixture('Gesture student',fixturePath,'canvas');
+  await bar.locator('#record').click();await expect(bar.locator('#record-label')).toHaveText('Merekam');
+  drive('drag',target.handle,'practiceCanvas');await expect.poll(()=>bar.evaluate(()=>window.lighthouse.state().then(s=>s.lastEvent))).toBe('dragDrop');
+  drive('scroll',target.handle,'practiceCanvas');await expect.poll(()=>bar.evaluate(()=>window.lighthouse.state().then(s=>s.lastEvent))).toBe('scroll');
+  await bar.locator('#stop').click();await expect(bar.locator('#record')).toBeVisible();
+  const archive=(await bar.evaluate(()=>window.lighthouse.state())).lastExport;const file=JSON.parse(readFileSync(archive,'utf8'));expect(file.format).toBe('lighthouse-recording');expect(file.steps.map(s=>s.event)).toEqual(['dragDrop','scroll']);expect(file.steps[0].motion.start[0]).toBeCloseTo(.25,1);
+  drive('focus',copy.handle);drive('hotkey','0');const c=student.application.windows().find(p=>p.url().endsWith('/chat.html'));await expect(c.locator('#question')).toBeFocused();
+  await c.locator('#question').fill('Practice canvas');await c.locator('#question').press('Enter');await expect(c.locator('.target-found')).toContainText('tarik');
+  drive('click',copy.handle,'saveButton');expect(await s.evaluate(()=>window.lighthouse.state().then(s=>s.guidePoint))).not.toBeNull();
+  drive('drag',copy.handle,'practiceCanvas');await expect(c.locator('.target-found')).toHaveText('Gerakan sudah teramati');
+  await c.evaluate(()=>window.lighthouse.guide({next:true}));await expect.poll(()=>s.evaluate(()=>window.lighthouse.state().then(s=>s.guidePoint))).not.toBeNull();
+  drive('scroll',copy.handle,'practiceCanvas');await expect.poll(()=>s.evaluate(()=>window.lighthouse.state().then(s=>s.guidePoint))).toBeNull();
+  await a.evaluate(()=>window.lighthouse.showPanel());await a.locator('#manage-nav').click();await expect(a.locator('#management-members')).toContainText('Gesture student');await expect(a.locator('#management-questions')).toContainText('Practice canvas');await a.screenshot({path:'test-results/management.png'});
+  await a.locator('#shortcuts-nav').click();await expect(a.locator('#shortcut-list')).toContainText('Alt + Shift + R');await a.screenshot({path:'test-results/shortcuts.png'});await a.locator('#shortcuts-back').click();
+  await owner.application.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},archive);
+  await a.evaluate(()=>window.lighthouse.importRecording());expect((await bar.evaluate(()=>window.lighthouse.state())).uploaded).toBe(2);
+  await owner.application.evaluate(()=>{globalThis.fetch=()=>Promise.reject(new Error('Offline'));});const cache=await a.evaluate(()=>window.lighthouse.management());expect(cache.offline).toBe(true);expect(cache.questions.some(q=>q.question==='Practice canvas')).toBe(true);
+ }finally{for(const client of [owner,student]){const p=client.application.process();if(p.exitCode===null)try{execFileSync('taskkill',['/pid',String(p.pid),'/t','/f'],{stdio:'ignore'});}catch{}}target?.child.kill();copy?.child.kill();}
 });

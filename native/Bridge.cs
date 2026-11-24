@@ -34,6 +34,7 @@ class Bridge {
   static HookProc KeyCallback=OnKey;
   static bool ShortcutDown;
   static Queue<Tuple<int,MouseData,IntPtr>> Pending=new Queue<Tuple<int,MouseData,IntPtr>>();
+  static Tuple<int,MouseData,IntPtr> Pressed;
   static bool RecordAll;
   static volatile bool StopRequested;
   static Dictionary<long,Dictionary<string,object>> Prior=new Dictionary<long,Dictionary<string,object>>();
@@ -55,7 +56,7 @@ class Bridge {
   static object Details(AutomationElement e){
     var c=e.Current;var r=c.BoundingRectangle;var root=AutomationElement.FromHandle(Window).Current.BoundingRectangle;
     var ancestors=new List<object>();var parent=TreeWalker.ControlViewWalker.GetParent(e);
-    for(int i=0;i<5&&parent!=null;i++,parent=TreeWalker.ControlViewWalker.GetParent(parent)){var pc=parent.Current;if(pc.NativeWindowHandle==Window.ToInt32())break;ancestors.Add(new {role=pc.ControlType.ProgrammaticName.Replace("ControlType.",""),name=pc.IsPassword||pc.ControlType==ControlType.Edit?"":pc.Name??""});}
+    for(int i=0;i<5&&parent!=null;i++,parent=TreeWalker.ControlViewWalker.GetParent(parent)){var pc=parent.Current;if(pc.NativeWindowHandle==Window.ToInt32())break;ancestors.Add(new {role=pc.ControlType.ProgrammaticName.Replace("ControlType.",""),name=pc.IsPassword||pc.ControlType==ControlType.Edit||pc.ControlType==ControlType.Document?"":pc.Name??""});}
     var patterns=new List<string>();foreach(var pattern in e.GetSupportedPatterns())patterns.Add(pattern.ProgrammaticName);
     string version="";try{uint pid;GetWindowThreadProcessId(Window,out pid);version=Process.GetProcessById((int)pid).MainModule.FileVersionInfo.FileVersion??"";}catch{}
     return new {className=c.ClassName??"",ancestors=ancestors,supportedPatterns=patterns,enabled=c.IsEnabled,bboxNorm=new double[]{root.Width>0?(r.X-root.X)/root.Width:0,root.Height>0?(r.Y-root.Y)/root.Height:0,root.Width>0?r.Width/root.Width:0,root.Height>0?r.Height/root.Height:0},appVersion=version};
@@ -74,10 +75,10 @@ class Bridge {
   }
   static Dictionary<string,object> Target(AutomationElement e) {
     var c=e.Current;if(c.IsPassword)throw new Exception("Protected field");
-    var name=c.ControlType==ControlType.Edit?"":c.Name;
+    var name=c.ControlType==ControlType.Edit||c.ControlType==ControlType.Document?"":c.Name;
     return new Dictionary<string,object>{{"automationId",c.AutomationId??""},{"name",(name??"").Substring(0,Math.Min(300,(name??"").Length))},{"controlType",c.ControlType.ProgrammaticName.Replace("ControlType.","")}};
   }
-  static void Emit(string kind,AutomationElement e,string direction) {
+  static void Emit(string kind,AutomationElement e,string direction,object motion=null,int scrollDelta=0) {
     if(e==null || !InWindow(e))return;
     var t=Target(e); if((string)t["automationId"]=="" && (string)t["name"]=="")return;
     var now=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -92,11 +93,13 @@ class Bridge {
     row["capture"]=new Dictionary<string,object>{{"surface","uia"},{"preState",pre},{"postState",null},{"details",Details(e)},{"env",new {os=Environment.OSVersion.ToString(),dpi=(int?)null,resolution=new int[]{Screen.PrimaryScreen.Bounds.Width,Screen.PrimaryScreen.Bounds.Height},monitorCount=Screen.AllScreens.Length,locale=System.Globalization.CultureInfo.CurrentCulture.Name}}};
     Enrich.Add(Tuple.Create(now+400,Window,row));
     if(direction!=null)row["direction"]=direction;
+    if(motion!=null)row["motion"]=motion;
+    if(kind=="scroll")row["scrollDelta"]=new int[]{0,scrollDelta};
     Write(new {kind="step",step=row});
   }
   static IntPtr OnMouse(int code,IntPtr message,IntPtr data) {
     int m=message.ToInt32();
-    if(code>=0 && (m==0x201 || m==0x204 || m==0x20A)) {
+    if(code>=0 && (m==0x201 || m==0x202 || m==0x204 || m==0x205 || m==0x20A)) {
       var value=(MouseData)Marshal.PtrToStructure(data,typeof(MouseData));
       var root=GetAncestor(WindowFromPoint(value.point),2);
       if(!StopRequested && Pending.Count<200 && (RecordAll?Allowed(root):root==Window))Pending.Enqueue(Tuple.Create(m,value,root));
@@ -135,9 +138,27 @@ class Bridge {
       try {
         long tick=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         while(Pending.Count>0) {
-          var item=Pending.Dequeue();var p=item.Item2.point;if(RecordAll)Window=item.Item3;
+          var item=Pending.Dequeue();
+          if(item.Item1==0x201||item.Item1==0x204){Pressed=item;continue;}
+          var finish=item.Item2.point;bool drag=false;int message=item.Item1;
+          if(message==0x202||message==0x205){if(Pressed==null)continue;var down=Pressed;Pressed=null;if(down.Item3!=item.Item3)continue;drag=message==0x202&&Math.Abs(finish.x-down.Item2.point.x)+Math.Abs(finish.y-down.Item2.point.y)>8;item=down;}
+          var p=item.Item2.point;if(RecordAll)Window=item.Item3;
           var element=AutomationElement.FromPoint(new System.Windows.Point(p.x,p.y));
-          Emit(item.Item1==0x20A?"scroll":item.Item1==0x204?"rightClick":"click",element,item.Item1==0x20A?((short)(item.Item2.mouseData>>16)>0?"up":"down"):null);
+          // FromPoint may see a newly appeared overlay; resolve in the actual event window.
+          if(element==null||!InWindow(element)){
+            element=null;double area=Double.MaxValue;
+            foreach(AutomationElement candidate in AutomationElement.FromHandle(Window).FindAll(TreeScope.Descendants,Condition.TrueCondition)){
+              try{var c=candidate.Current;var b=c.BoundingRectangle;if(!c.IsOffscreen&&!c.IsPassword&&b.Contains(p.x,p.y)&&b.Width*b.Height<area){element=candidate;area=b.Width*b.Height;}}catch{}
+            }
+          }
+          object motion=null;
+          if(drag){
+            while(element!=null&&(!element.Current.BoundingRectangle.Contains(finish.x,finish.y)||(element.Current.AutomationId==""&&element.Current.Name=="")))element=TreeWalker.ControlViewWalker.GetParent(element);
+            if(element==null||!InWindow(element))continue;var b=element.Current.BoundingRectangle;if(b.Width<=0||b.Height<=0)continue;
+            motion=new {start=new double[]{(p.x-b.X)/b.Width,(p.y-b.Y)/b.Height},end=new double[]{(finish.x-b.X)/b.Width,(finish.y-b.Y)/b.Height}};
+          }
+          if(message==0x20A){var container=element;while(container!=null&&InWindow(container)){object pattern;if(container.TryGetCurrentPattern(ScrollPattern.Pattern,out pattern)){element=container;break;}container=TreeWalker.ControlViewWalker.GetParent(container);}}
+          Emit(drag?"dragDrop":item.Item1==0x20A?"scroll":item.Item1==0x204?"rightClick":"click",element,item.Item1==0x20A?((short)(item.Item2.mouseData>>16)>0?"up":"down"):null,motion,item.Item1==0x20A?(short)(item.Item2.mouseData>>16):0);
         }
         while(TypedPending.Count>0){
           var h=TypedPending.Dequeue();if(RecordAll)Window=h;
@@ -180,7 +201,9 @@ class Bridge {
     var r=found.Current.BoundingRectangle;
     Write(new {resolved=true,strategy=strategy,bounds=new {x=r.X,y=r.Y,width=r.Width,height=r.Height}});
   }
-  static void Watch(string data,string action){
+  static void Watch(string data,string action,string gestureData){
+    var gesture=gestureData==null?null:Json.Deserialize<Dictionary<string,object>>(Encoding.UTF8.GetString(Convert.FromBase64String(gestureData)));
+    Point? dragStart=null;
     var target=DecodeTarget(data);string strategy;var element=Locate(target,out strategy);
     if(element==null)throw new Exception("Target missing");
     var bounds=element.Current.BoundingRectangle;
@@ -190,9 +213,16 @@ class Bridge {
     timer.Tick+=(s,a)=>{
       try{
         while(Pending.Count>0){var item=Pending.Dequeue();var p=item.Item2.point;
-          if(item.Item1==(action=="rightClick"?0x204:0x201)&&bounds.Contains(p.x,p.y)){
-            Write(new {kind="target-clicked"});Application.ExitThread();return;
+          bool completed=false;
+          if(action=="scroll"&&item.Item1==0x20A&&bounds.Contains(p.x,p.y))completed=gesture==null||!gesture.ContainsKey("direction")||(string)gesture["direction"]==((short)(item.Item2.mouseData>>16)>0?"up":"down");
+          else if(action=="dragDrop"&&gesture!=null){
+            var start=(System.Collections.ArrayList)gesture["start"];var end=(System.Collections.ArrayList)gesture["end"];
+            double sx=bounds.X+Convert.ToDouble(start[0])*bounds.Width,sy=bounds.Y+Convert.ToDouble(start[1])*bounds.Height,ex=bounds.X+Convert.ToDouble(end[0])*bounds.Width,ey=bounds.Y+Convert.ToDouble(end[1])*bounds.Height;
+            if(item.Item1==0x201)dragStart=Math.Abs(p.x-sx)<=24&&Math.Abs(p.y-sy)<=24?(Point?)p:null;
+            if(item.Item1==0x202){completed=dragStart.HasValue&&Math.Abs(p.x-ex)<=24&&Math.Abs(p.y-ey)<=24;dragStart=null;}
           }
+          else if(action!="scroll"&&action!="dragDrop"&&item.Item1==(action=="rightClick"?0x204:0x201)&&bounds.Contains(p.x,p.y))completed=true;
+          if(completed){Write(new {kind=action=="scroll"||action=="dragDrop"?"gesture-completed":"target-clicked"});Application.ExitThread();return;}
         }
         if(!IsWindowVisible(Window)){Write(new {kind="target-lost"});Application.ExitThread();return;}
         element=Locate(target,out strategy);
@@ -224,7 +254,7 @@ class Bridge {
       if(!IsWindowVisible(Window))throw new Exception("Selected window is unavailable");
       if(args[0]=="record")Record();
       else if(args[0]=="resolve")Resolve(args[2]);
-      else if(args[0]=="watch")Watch(args[2],args.Length>3?args[3]:"click");
+      else if(args[0]=="watch")Watch(args[2],args.Length>3?args[3]:"click",args.Length>4?args[4]:null);
       else if(args[0]=="snapshot") {Write(State(Window));return;
 
       }

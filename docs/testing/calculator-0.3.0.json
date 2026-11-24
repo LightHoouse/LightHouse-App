@@ -1,0 +1,21 @@
+{
+  "application": "Windows Calculator",
+  "startedAt": "2026-11-24T11:47:12.051Z",
+  "targets": [
+    "clearButton",
+    "num7Button",
+    "plusButton",
+    "num8Button",
+    "equalButton"
+  ],
+  "chatFollowsMouse": true,
+  "intermediateTextVisible": true,
+  "deltas": 21,
+  "companionPointsAtEquals": true,
+  "realMouseUnchanged": true,
+  "waitsBeyondOldTimeout": true,
+  "otherClickDoesNotDismiss": true,
+  "targetClickDismisses": true,
+  "answer": "Tombol Equals (=) diklik untuk menampilkan hasil penjumlahan 7 + 8, yaitu 15.\nTarget sudah diklik",
+  "passed": true
+}

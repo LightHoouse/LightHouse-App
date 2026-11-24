@@ -24,7 +24,7 @@ test.beforeAll(async()=>{
 test.afterAll(async()=>{if(backend){backend.stdin.write('stop');await new Promise(resolve=>{backend.once('exit',resolve);setTimeout(()=>{if(backend.exitCode===null)execFileSync('taskkill',['/pid',String(backend.pid),'/t','/f']);resolve();},10000).unref();});}});
 async function launch(existingProfile){
  const profile=existingProfile||mkdtempSync(path.join(tmpdir(),'lighthouse-e2e-'));
- const env={...process.env,LIGHTHOUSE_PROFILE_DIR:profile,LIGHTHOUSE_BACKEND_URL:backendUrl};delete env.ELECTRON_RUN_AS_NODE;
+ const env={...process.env,LIGHTHOUSE_PROFILE_DIR:profile,LIGHTHOUSE_RECORDINGS_DIR:path.join(profile,'recordings'),LIGHTHOUSE_BACKEND_URL:backendUrl};delete env.ELECTRON_RUN_AS_NODE;
  const executablePath=process.env.LIGHTHOUSE_TEST_EXE;
  const application=await electron.launch({...(executablePath?{executablePath}:{}),args:executablePath?[]:[path.resolve('.')],env});
  let panel;await expect.poll(async()=>{panel=application.windows().find(p=>p.url().endsWith('/panel.html'));return !!panel;}).toBe(true);
