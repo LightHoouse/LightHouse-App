@@ -4,14 +4,16 @@ $installDir = Join-Path $env:RUNNER_TEMP 'Lighthouse-install-check'
 Start-Process -FilePath $installer.FullName -ArgumentList @('/S', "/D=$installDir") -Wait -WindowStyle Hidden
 $exe = Join-Path $installDir 'Lighthouse.exe'
 if (-not (Test-Path -LiteralPath $exe)) { throw 'Installed executable missing' }
-$key = 'Registry::HKEY_CURRENT_USER\Software\Classes\Lighthouse.Recording'
+$progId = (Get-Item 'Registry::HKEY_CURRENT_USER\Software\Classes\.lighthouse').GetValue('')
+if (-not $progId) { throw 'Missing recording ProgID' }
+$key = "Registry::HKEY_CURRENT_USER\Software\Classes\$progId"
 $icon = (Get-Item -LiteralPath "$key\DefaultIcon").GetValue('')
 $command = (Get-Item -LiteralPath "$key\shell\open\command").GetValue('')
 if (-not $icon -or -not $command.Contains('Lighthouse.exe') -or -not $command.Contains('%1')) { throw 'Association icon or open command missing' }
 $iconFile = ($icon -replace ',\d+$','').Trim('"')
 if (-not (Test-Path -LiteralPath $iconFile)) { throw "Association icon file missing: $iconFile" }
 $extension = (Get-Item 'Registry::HKEY_CURRENT_USER\Software\Classes\.lighthouse').GetValue('')
-if ($extension -ne 'Lighthouse.Recording') { throw 'Recording extension not registered' }
+if ($extension -ne $progId) { throw 'Recording extension not registered' }
 Add-Type -AssemblyName System.Drawing
 if (-not [System.Drawing.Icon]::ExtractAssociatedIcon($exe)) { throw 'Installed executable icon missing' }
 if ((Get-FileHash -LiteralPath $iconFile).Hash -ne (Get-FileHash native/icon.ico).Hash) { throw 'Registered icon differs from Lighthouse artwork' }

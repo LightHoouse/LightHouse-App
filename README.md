@@ -22,14 +22,9 @@ The main flows are captured below so the product surface is visible without inst
 | --- | --- |
 | ![Cursor settings](docs/screenshots/05-settings-cursor.png) | ![Recording library](docs/screenshots/06-recordings.png) |
 
-| Shortcuts | Student chat |
-| --- | --- |
-| ![Shortcuts](docs/screenshots/07-shortcuts.png) | ![Student chat](docs/screenshots/student-chat.png) |
+![Shortcuts](docs/screenshots/07-shortcuts.png)
 
-| Recording toolbar | Import preview |
-| --- | --- |
-| ![Recording toolbar](docs/screenshots/recorder-toolbar.png) | ![Import preview](docs/screenshots/import-preview.png) |
-Release assets are labeled by platform: **Windows** uses the .exe installer and native Windows UI Automation; **macOS** uses .dmg/.zip packaging and is currently a preview build while the Windows recorder bridge is ported; **iOS/iPadOS is not an Electron target** and needs a separate native mobile client before TestFlight or App Store distribution.
+**Platforms:** Windows x64 uses the `.exe` installer. macOS packaging is disabled until native recording and encrypted storage are ported and tested. iOS/iPadOS requires a separate client; no iOS installer is available.
 
 ## Use it
 

@@ -157,7 +157,7 @@ test('portable session, local management, shortcuts and native drag/scroll guida
 
 test('cursor preferences persist and opening a recording shows preview before import',async()=>{
  let client=await launch();try{
-  await client.panel.locator('#cursor-nav').click();await expect(client.panel.locator('#cursor-page')).toBeVisible();await client.panel.getByRole('button',{name:'Berlian',exact:true}).click();await client.panel.getByRole('button',{name:'Ungu',exact:true}).click();await expect(client.panel.locator('#preview-cursor')).toHaveAttribute('fill','#8056d9');
+  await client.panel.locator('#settings-header').click();await expect(client.panel.locator('#settings-page')).toBeVisible();await client.panel.getByRole('button',{name:'Berlian',exact:true}).click();await client.panel.getByRole('button',{name:'Ungu',exact:true}).click();await expect(client.panel.locator('#preview-cursor')).toHaveAttribute('fill','#8056d9');
   const buddy=client.application.windows().find(w=>w.url().endsWith('/buddy.html'));await expect(buddy.locator('#cursor-shape')).toHaveAttribute('fill','#8056d9');
   const profile=client.profile;execFileSync('taskkill',['/pid',String(client.application.process().pid),'/t','/f'],{stdio:'ignore'});
   const archive=path.join(profile,'Preview.lighthouse');const {writeFileSync}=await import('node:fs');writeFileSync(archive,JSON.stringify({format:'lighthouse-recording',version:1,name:'Latihan pertama',createdAt:Date.now(),steps:[{eventId:crypto.randomUUID(),event:'click',target:{automationId:'save',name:'Simpan',controlType:'Button'},window:{process:'fixture',title:'Practice'},timestamp:Date.now(),enrichment:false}]}));
