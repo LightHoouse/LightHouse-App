@@ -101,3 +101,9 @@ Recordings include scroll direction/delta and drag start/end and sampled path no
 The shortcut page reports registration conflicts. Shortcuts do not execute actions in the student's application.
 
 See [action coverage](docs/action-coverage.md) for the tested gesture model and application-specific limits. Classroom layout references: [Steep](https://mobbin.com/screens/88db9a18-c55d-4103-924b-6bb77ff067e9) and [Hashnode](https://mobbin.com/screens/8e2f4a34-2689-4461-aae2-e0032539b387) via Mobbin.
+
+### Windows file icons and opening recordings
+
+Installing version 0.3.2 or later registers `.lighthouse` as **Lighthouse Recording** with the Lighthouse icon. Double-click opens a preview, then an assistant can add it to their current class. No file is uploaded until import is confirmed. If Windows has a previous default association, choose **Open with > Lighthouse**. Unpacked development builds do not register file icons.
+
+Import preview reference: [Podia on Mobbin](https://mobbin.com/screens/0f4b44b3-bcb0-4c19-80c9-414a89581eab).

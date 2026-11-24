@@ -68,6 +68,9 @@ jobs:
         run: |
           $env:LIGHTHOUSE_TEST_EXE = "$pwd/release/win-unpacked/Lighthouse.exe"
           npx playwright test
+      - name: Verify installed branding and recording association
+        shell: pwsh
+        run: ./scripts/verify-install.ps1
       - name: Manifest and checksums for verified installer
         shell: pwsh
         run: |

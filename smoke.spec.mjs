@@ -21,11 +21,11 @@ test.beforeAll(async()=>{
  await expect.poll(async()=>{try{return (await fetch(backendUrl+'/health')).ok;}catch{return false;}},{timeout:150000}).toBe(true);
 });
 test.afterAll(async()=>{if(backend){backend.stdin.write('stop');await new Promise(resolve=>{backend.once('exit',resolve);setTimeout(()=>{if(backend.exitCode===null)execFileSync('taskkill',['/pid',String(backend.pid),'/t','/f']);resolve();},10000).unref();});}});
-async function launch(existingProfile){
+async function launch(existingProfile,openFile){
  const profile=existingProfile||mkdtempSync(path.join(tmpdir(),'lighthouse-e2e-'));
  const env={...process.env,LIGHTHOUSE_PROFILE_DIR:profile,LIGHTHOUSE_RECORDINGS_DIR:path.join(profile,'recordings'),LIGHTHOUSE_BACKEND_URL:backendUrl};delete env.ELECTRON_RUN_AS_NODE;
  const executablePath=process.env.LIGHTHOUSE_TEST_EXE;
- const application=await electron.launch({...(executablePath?{executablePath}:{}),args:executablePath?[]:[path.resolve('.')],env});
+ const application=await electron.launch({...(executablePath?{executablePath}:{}),args:[...(executablePath?[]:[path.resolve('.')]),...(openFile?[openFile]:[])],env});
  let panel;await expect.poll(async()=>{panel=application.windows().find(p=>p.url().endsWith('/panel.html'));return !!panel;}).toBe(true);
  await expect(panel.locator('#enter')).toBeEnabled();return {application,panel,profile};
 }
@@ -98,7 +98,7 @@ test('cursor-first session: full recording, role isolation, Alt+L context, live 
   expect(await student.application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Highlight').isVisible())).toBe(false);
   await bar.locator('#group').click();await expect(a.locator('#group-code')).toHaveText(code);a.once('dialog',d=>d.accept());await a.locator('#close-group').click();await expect(a.locator('#welcome')).toBeVisible();
   await c.locator('#question').fill('Simpan');await c.locator('#question').press('Enter');await expect(c.locator('.message.failed').last()).toContainText('ditutup');
- }finally{for(const client of [owner,student]){const p=client.application.process();if(p.exitCode===null)try{execFileSync('taskkill',['/pid',String(p.pid),'/t','/f'],{stdio:'ignore'});}catch{}}target?.child.kill();other?.child.kill();copy?.child.kill();}
+ }finally{for(const client of [owner,student,...(typeof previewClient!=='undefined'&&previewClient?[previewClient]:[])]){const p=client.application.process();if(p.exitCode===null)try{execFileSync('taskkill',['/pid',String(p.pid),'/t','/f'],{stdio:'ignore'});}catch{}}target?.child.kill();other?.child.kill();copy?.child.kill();}
 });
 
 
@@ -124,7 +124,7 @@ test('offline action queue survives process crash and uploads once after restart
 
 
 test('portable session, local management, shortcuts and native drag/scroll guidance',async()=>{
- test.setTimeout(180000);let owner=await launch(),student=await launch(),target,copy;
+ test.setTimeout(180000);let owner=await launch(),student=await launch(),target,copy,previewClient;
  try{
   const a=owner.panel,s=student.panel;await a.evaluate(()=>document.fonts.ready);expect(await a.locator('body').evaluate(el=>getComputedStyle(el).fontFamily)).toContain('Quicksand');await a.screenshot({path:'test-results/welcome.png'});await a.locator('#create-tab').click();await a.locator('#name').fill('Gesture assistant');await a.locator('#enter').click();
   const bar=owner.application.windows().find(p=>p.url().endsWith('/toolbar.html'));const code=await bar.locator('#copy').innerText();
@@ -144,11 +144,24 @@ test('portable session, local management, shortcuts and native drag/scroll guida
   await a.evaluate(()=>window.lighthouse.showPanel());await a.locator('#manage-nav').click();await expect(a.locator('#management')).toBeVisible();await a.locator('#refresh-management').click();await expect(a.locator('#management-members')).toContainText('Gesture student');await a.locator('.member-row').filter({hasText:'Gesture student'}).click();await expect(a.locator('#management-questions')).toContainText('Practice canvas');await a.screenshot({path:'test-results/management.png'});
   await a.locator('#shortcuts-nav').click();await expect(a.locator('#shortcut-list')).toContainText('Alt + Shift + R');await a.screenshot({path:'test-results/shortcuts.png'});await a.locator('#shortcuts-back').click();
   await owner.application.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},archive);
-  await a.evaluate(()=>window.lighthouse.importRecording());expect((await bar.evaluate(()=>window.lighthouse.state())).uploaded).toBe(2);
+  await a.evaluate(()=>window.lighthouse.chooseImport());await expect(a.locator('#import-page')).toBeVisible();await expect(a.locator('#import-name')).not.toBeEmpty();await a.locator('#confirm-import').click();await expect(a.locator('#management')).toBeVisible();expect((await bar.evaluate(()=>window.lighthouse.state())).uploaded).toBe(2);
   await student.application.evaluate(()=>{const original=globalThis.fetch;globalThis.fetch=async(url,options)=>{const response=await original(url,options);if(String(url).endsWith('/v1/guide'))await new Promise(resolve=>{globalThis.releaseGuide=resolve;});return response;};});
   await c.evaluate(()=>{window.cancelResult='pending';void window.lighthouse.guide({question:'Practice canvas'}).then(()=>window.cancelResult='unexpected').catch(e=>window.cancelResult=e.message);});
   await expect.poll(()=>student.application.evaluate(()=>typeof globalThis.releaseGuide)).toBe('function');await c.evaluate(()=>window.lighthouse.hideChat());await student.application.evaluate(()=>globalThis.releaseGuide());await expect.poll(()=>c.evaluate(()=>window.cancelResult)).toContain('dibatalkan');expect(await s.evaluate(()=>window.lighthouse.state().then(s=>s.guidePoint))).toBeNull();
   await a.evaluate(()=>window.lighthouse.hidePanel());await bar.locator('#record').click();await expect(bar.locator('#record-label')).toHaveText('Merekam');drive('stroke',target.handle,'practiceCanvas');await expect.poll(()=>bar.evaluate(()=>window.lighthouse.state().then(s=>s.lastEvent))).toBe('dragDrop');await bar.locator('#stop').click();await expect(bar.locator('#record')).toBeVisible();const closed=JSON.parse(readFileSync((await bar.evaluate(()=>window.lighthouse.state())).lastExport,'utf8')).steps[0];expect(closed.event).toBe('dragDrop');expect(closed.motion.points.length).toBeGreaterThan(5);expect(closed.motion.start[0]).toBeCloseTo(closed.motion.end[0],1);
+  previewClient=await launch(undefined,archive);await expect(previewClient.panel.locator('#import-page')).toBeVisible();await expect(previewClient.panel.locator('#confirm-import')).toBeDisabled();
   await owner.application.evaluate(()=>{globalThis.fetch=()=>Promise.reject(new Error('Offline'));});const cache=await a.evaluate(()=>window.lighthouse.management());expect(cache.offline).toBe(true);expect(cache.questions.some(q=>q.question==='Practice canvas')).toBe(true);
- }finally{for(const client of [owner,student]){const p=client.application.process();if(p.exitCode===null)try{execFileSync('taskkill',['/pid',String(p.pid),'/t','/f'],{stdio:'ignore'});}catch{}}target?.child.kill();copy?.child.kill();}
+ }finally{for(const client of [owner,student,...(typeof previewClient!=='undefined'&&previewClient?[previewClient]:[])]){const p=client.application.process();if(p.exitCode===null)try{execFileSync('taskkill',['/pid',String(p.pid),'/t','/f'],{stdio:'ignore'});}catch{}}target?.child.kill();copy?.child.kill();}
+});
+
+
+test('cursor preferences persist and opening a recording shows preview before import',async()=>{
+ let client=await launch();try{
+  await client.panel.locator('#cursor-nav').click();await expect(client.panel.locator('#cursor-page')).toBeVisible();await client.panel.getByRole('button',{name:'Berlian',exact:true}).click();await client.panel.getByRole('button',{name:'Ungu',exact:true}).click();await expect(client.panel.locator('#preview-cursor')).toHaveAttribute('fill','#8056d9');
+  const buddy=client.application.windows().find(w=>w.url().endsWith('/buddy.html'));await expect(buddy.locator('#cursor-shape')).toHaveAttribute('fill','#8056d9');
+  const profile=client.profile;execFileSync('taskkill',['/pid',String(client.application.process().pid),'/t','/f'],{stdio:'ignore'});
+  const archive=path.join(profile,'Preview.lighthouse');const {writeFileSync}=await import('node:fs');writeFileSync(archive,JSON.stringify({format:'lighthouse-recording',version:1,name:'Latihan pertama',createdAt:Date.now(),steps:[{eventId:crypto.randomUUID(),event:'click',target:{automationId:'save',name:'Simpan',controlType:'Button'},window:{process:'fixture',title:'Practice'},timestamp:Date.now(),enrichment:false}]}));
+  client=await launch(profile,archive);await expect(client.panel.locator('#import-page')).toBeVisible();await expect(client.panel.locator('#import-name')).toHaveText('Latihan pertama');await expect(client.panel.locator('#confirm-import')).toBeDisabled();expect(await client.panel.evaluate(()=>window.lighthouse.cursor())).toEqual({color:'#8056d9',shape:'diamond'});
+  await client.panel.screenshot({path:'test-results/import-preview.png'});
+ }finally{const p=client.application.process();if(p.exitCode===null)try{execFileSync('taskkill',['/pid',String(p.pid),'/t','/f'],{stdio:'ignore'});}catch{}}
 });

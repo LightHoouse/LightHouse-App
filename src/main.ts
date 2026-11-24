@@ -11,7 +11,7 @@ import path from 'node:path';
 import {spawn,execFile,execFileSync,type ChildProcess} from 'node:child_process';
 import {promisify} from 'node:util';
 import {createInterface} from 'node:readline';
-import {readFileSync,writeFileSync,existsSync,unlinkSync,mkdirSync,renameSync,statSync} from 'node:fs';
+import {readFileSync,writeFileSync,existsSync,unlinkSync,mkdirSync,renameSync,statSync,readdirSync} from 'node:fs';
 const dir=path.dirname(fileURLToPath(import.meta.url));
 const apiBase=process.env.LIGHTHOUSE_BACKEND_URL||'https://lighthouse-be.yanzz.dev';
 const endpoint=new URL(apiBase);
@@ -35,7 +35,15 @@ let shortcutHelper:ChildProcess|undefined;
 let chatAnchor={x:0,y:0};
 let guidePoint:{x:number;y:number}|undefined,guideWatcher:ChildProcess|undefined,buddyPosition:{x:number;y:number}|undefined;
 let chatSize={expanded:false,width:116,height:180};
-let chatPlacement='',guideVersion=0;
+let chatPlacement='',guideVersion=0,lastStepId='';
+let conversation:{role:'user'|'assistant';content:string}[]=[];
+let pendingFile:string|undefined,importPreview:any=null;
+let cursorAppearance={color:'#3380ff',shape:'arrow'};
+function fileArgument(args:string[]){return args.find(a=>path.isAbsolute(a)&&a.toLowerCase().endsWith('.lighthouse'));}
+const primaryInstance=app.requestSingleInstanceLock();
+if(!primaryInstance)app.exit(0);
+app.on('second-instance',(_event,args)=>{const file=fileArgument(args);if(file&&panel)void previewRecording(file).catch(e=>dialog.showErrorBox('Rekaman tidak dapat dibuka',e.message));else if(panel)showPanel();});
+app.setAppUserModelId('com.lighthouse.labassistant');
 let gesturePath:{start:{x:number;y:number};end:{x:number;y:number};points?:{x:number;y:number}[];started:number}|undefined;
 function sizeChat(expanded:boolean,composerWidth=116,replyHeight=180){
  chatSize={expanded,width:composerWidth,height:replyHeight};
@@ -55,7 +63,7 @@ async function api(route:string,body?:unknown){const r=await fetch(apiBase+route
 async function native(args:string[]){const {stdout}=await execute(nativePath(),args,{windowsHide:true,timeout:15000,maxBuffer:2_000_000});return JSON.parse(stdout.trim().replace(/^\uFEFF/,''));}
 function elapsedRecording(){return recordElapsedMs+(recording?Math.max(0,performance.now()-recordActiveSince):0);}
 function freezeRecording(){recordElapsedMs=elapsedRecording();recording=false;}
-function state(){return {lastExport,session:session?{role:session.role,group:session.group}:null,recording,recordingId,captured,uploaded,pending:queue.length,recordError,recordElapsedMs:elapsedRecording(),hotkey,lastEvent,hotkeyAt,chatError,guideStatus,guidePoint:guidePoint||null};}
+function state(){return {lastExport,importPreview,session:session?{role:session.role,group:session.group}:null,recording,recordingId,captured,uploaded,pending:queue.length,recordError,recordElapsedMs:elapsedRecording(),hotkey,lastEvent,hotkeyAt,chatError,guideStatus,guidePoint:guidePoint||null};}
 function update(){for(const w of [panel,toolbar,chat])if(w&&!w.isDestroyed())w.webContents.send('lab:state',state());}
 function hideGuide(){gesturePath=undefined;guideStatus='dismissed';guidePoint=undefined;const observer=guideWatcher;guideWatcher=undefined;observer?.kill();marker.hide();if(markerTimer)clearTimeout(markerTimer);}
 function hideChat(){guideVersion++;chat.hide();hideGuide();}
@@ -73,10 +81,17 @@ async function pause(){const child=recorder;recorder=undefined;freezeRecording()
 async function stop(){if(stopping)return stopping;stopping=(async()=>{stopRequested=true;await pause();persistRecorder();exportRecording();await flush();if(recordingId)await api(`/v1/recordings/${recordingId}/stop`,{});recordingId='';stopRequested=false;recordError='';persistRecorder();update();})();try{await stopping;}finally{stopping=undefined;}}
 async function record(){if(session?.role!=='assistant')throw new Error('Hanya asisten yang bisa merekam.');if(recordingId)throw new Error('Hentikan rekaman sebelumnya dulu.');const name='Sesi '+new Date().toLocaleString('id-ID',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});const r=await api('/v1/recordings',{name,process:'*'});recordingId=r.recordingId;recordElapsedMs=0;recordActiveSince=0;captured=uploaded=0;queue=[];recordedEvents=[];stopRequested=false;persistRecorder();await startRecorder();return state();}
 function recordingsDirectory(){const folder=process.env.LIGHTHOUSE_RECORDINGS_DIR||path.join(app.getPath('documents'),'Lighthouse','Recordings');mkdirSync(folder,{recursive:true});return folder;}
+function listRecordings(){return readdirSync(recordingsDirectory(),{withFileTypes:true}).filter(e=>e.isFile()&&e.name.toLowerCase().endsWith('.lighthouse')).map(e=>{const file=path.join(recordingsDirectory(),e.name);try{const stat=statSync(file);const parsed=portableSchema.safeParse(JSON.parse(readFileSync(file,'utf8')));if(!parsed.success)return null;const data=parsed.data;return {fileName:e.name,name:data.name,createdAt:data.createdAt,actions:data.steps.length,sizeBytes:stat.size,apps:[...new Set(data.steps.map(s=>s.window.process))]};}catch{return null;}}).filter(Boolean).sort((a:any,b:any)=>b.createdAt-a.createdAt);}
 function exportRecording(){if(!recordingId||!recordedEvents.length)return;const data=portableSchema.parse({format:'lighthouse-recording',version:1,name:('Sesi '+new Date(recordedEvents[0].timestamp).toLocaleString('id-ID')).slice(0,120),createdAt:recordedEvents[0].timestamp,steps:recordedEvents});const file=path.join(recordingsDirectory(),recordingId+'.lighthouse');writeFileSync(file+'.tmp',JSON.stringify(data,null,2),'utf8');renameSync(file+'.tmp',file);lastExport=file;}
-async function importRecording(){
+async function previewRecording(file?:string){
+ if(!file){const picked=await dialog.showOpenDialog(panel,{title:'Buka rekaman',properties:['openFile'],filters:[{name:'Lighthouse recording',extensions:['lighthouse','json']}]});if(picked.canceled)return;file=picked.filePaths[0];}
+ if(statSync(file).size>32_000_000)throw new Error('File terlalu besar (maksimal 32 MB).');
+ const data=portableSchema.safeParse(JSON.parse(readFileSync(file,'utf8')));if(!data.success)throw new Error('Format rekaman tidak valid atau belum didukung.');
+ pendingFile=file;importPreview={name:data.data.name,fileName:path.basename(file),actions:data.data.steps.length,createdAt:data.data.createdAt,apps:[...new Set(data.data.steps.map(s=>s.window.process))]};showPanel();update();panel.webContents.send('lab:import-preview');return importPreview;
+}
+async function importRecording(selectedFile?:string){
  if(session?.role!=='assistant')throw new Error('Impor tersedia untuk asisten.');if(recordingId)throw new Error('Hentikan sesi aktif sebelum impor.');
- const picked=await dialog.showOpenDialog(panel,{title:'Impor rekaman Lighthouse',properties:['openFile'],filters:[{name:'Lighthouse recording',extensions:['lighthouse','json']}]});if(picked.canceled)return {cancelled:true};
+ const picked=selectedFile?{canceled:false,filePaths:[selectedFile]}:await dialog.showOpenDialog(panel,{title:'Impor rekaman Lighthouse',properties:['openFile'],filters:[{name:'Lighthouse recording',extensions:['lighthouse','json']}]});if(picked.canceled)return {cancelled:true};
  const file=picked.filePaths[0];if(statSync(file).size>32_000_000)throw new Error('File terlalu besar (maksimal 32 MB).');
  const parsed=portableSchema.safeParse(JSON.parse(readFileSync(file,'utf8')));if(!parsed.success)throw new Error('Format rekaman tidak valid atau versinya belum didukung.');
  const recording=await api('/v1/recordings',{name:parsed.data.name,process:'*'});recordingId=recording.recordingId;
@@ -163,13 +178,14 @@ async function guide(input:any){
  const question=typeof input?.question==='string'?input.question.trim().slice(0,1000):'';
  if(!question&&!input?.next)throw new Error('Tulis pertanyaanmu dulu.');
  hideGuide();const requestVersion=++guideVersion;
- const command=await guideStream({...(input?.next&&lastRecording?{recordingId:lastRecording}:{}),question,afterSeq:input?.next?lastSeq:0,visibleNames:snapshot.visibleNames||[],activeProcess:context?.process||''},typeof input?.requestId==='string'?input.requestId.slice(0,80):'');
+ const command=await guideStream({...(input?.next&&lastRecording?{recordingId:lastRecording}:{}),question,history:conversation.slice(-8),...(lastStepId?{currentStepId:lastStepId}:{}),afterSeq:input?.next?lastSeq:0,visibleNames:snapshot.visibleNames||[],activeProcess:context?.process||''},typeof input?.requestId==='string'?input.requestId.slice(0,80):'');
  if(requestVersion!==guideVersion)throw new Error('Pertanyaan dibatalkan.');
- hideGuide();if(command.done)return {done:true,message:'Kamu sudah sampai di akhir rekaman.'};
+ if(question&&command.explanation){conversation.push({role:'user',content:question},{role:'assistant',content:command.explanation});conversation=conversation.slice(-8);}
+ hideGuide();if(command.answerMode==='explain'||command.answerMode==='clarify')return {message:command.explanation,source:command.source,resolved:false,answerMode:command.answerMode};if(command.done)return {done:true,message:'Kamu sudah sampai di akhir rekaman.'};
  const windows:WindowInfo[]=await native(['windows']);const matches=windows.filter(w=>w.process===command.step.window.process);
  const target=context?.process===command.step.window.process?context:matches.length===1?matches[0]:undefined;
  const resolution=target?await native(['resolve',target.handle,Buffer.from(JSON.stringify(command.step.target)).toString('base64')]):{resolved:false,reason:matches.length>1?'Ada beberapa jendela aplikasi. Buka jendela yang kamu pakai, lalu tekan Alt+L lagi.':`Buka ${command.step.window.process} dulu, lalu tekan Alt+L lagi.`};
- if(resolution.resolved){const b=resolution.bounds;if(![b.x,b.y,b.width,b.height].every(Number.isFinite)||b.width<=0||b.height<=0)throw new Error('Elemen belum bisa ditunjuk.');const r=screen.screenToDipRect(null,{x:Math.round(b.x),y:Math.round(b.y),width:Math.round(b.width),height:Math.round(b.height)});guidePoint={x:r.x+r.width/2-16,y:r.y+r.height/2-16};setGesture(r,command.step);watchTarget(target!,command.step.target,command.step.event,command);lastSeq=command.step.seq;lastRecording=command.step.recordingId;}
+ if(resolution.resolved){const b=resolution.bounds;if(![b.x,b.y,b.width,b.height].every(Number.isFinite)||b.width<=0||b.height<=0)throw new Error('Elemen belum bisa ditunjuk.');const r=screen.screenToDipRect(null,{x:Math.round(b.x),y:Math.round(b.y),width:Math.round(b.width),height:Math.round(b.height)});guidePoint={x:r.x+r.width/2-16,y:r.y+r.height/2-16};setGesture(r,command.step);watchTarget(target!,command.step.target,command.step.event,command);lastSeq=command.step.seq;lastRecording=command.step.recordingId;lastStepId=command.step.stepId;}
  await api('/v1/ack',{cmdId:command.cmdId,stepId:command.step.stepId,resolved:Boolean(resolution.resolved),strategy:resolution.strategy||null});
  return {message:command.explanation||command.say,instruction:command.say,resolved:Boolean(resolution.resolved),reason:resolution.reason||'',event:command.step.event,shortcut:[...(command.step.modifiers||[]),command.step.key||''].filter(Boolean).join(' + '),source:command.source,seq:command.step.seq,total:command.total};
 }
@@ -180,22 +196,25 @@ app.whenReady().then(async()=>{
  if(!safeStorage.isEncryptionAvailable())throw new Error('Encrypted local storage is unavailable');
  journal=new RecorderStore(path.join(app.getPath('userData'),'recorder.enc'),s=>storage.encrypt(s),b=>decryptLocal(b));
  try{const saved=journal.load();if(saved&&session?.role==='assistant'&&saved.groupId===session.group.groupId){recordingId=saved.recordingId;queue=saved.queue;recordedEvents=saved.events||saved.queue.filter((e:any)=>!e.enrichment);captured=saved.captured;uploaded=saved.uploaded;recordElapsedMs=saved.elapsedMs;stopRequested=saved.stopRequested;if(recordingId)recordError='Rekaman dipulihkan. Lanjutkan saat siap.';}}catch{recordError='Rekaman lokal tidak dapat dibaca.';}
- const shared={frame:false,show:false,webPreferences};
+ try{const value=JSON.parse(readFileSync(path.join(app.getPath('userData'),'cursor.json'),'utf8'));if(/^#[0-9a-fA-F]{6}$/.test(value.color)&&['arrow','triangle','diamond'].includes(value.shape))cursorAppearance=value;}catch{}
+ const shared={icon:path.join(dir,'ui/logo-mark.png'),frame:false,show:false,webPreferences};
  panel=new BrowserWindow({...shared,width:500,height:640,resizable:false,backgroundColor:'#f7f8fa'});
  toolbar=new BrowserWindow({...shared,width:400,height:76,resizable:false,transparent:true,alwaysOnTop:true,skipTaskbar:true});
  chat=new BrowserWindow({...shared,width:380,height:430,resizable:false,transparent:true,alwaysOnTop:true,skipTaskbar:true});
  marker=new BrowserWindow({...shared,width:100,height:50,transparent:true,alwaysOnTop:true,focusable:false,skipTaskbar:true,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false}});marker.setIgnoreMouseEvents(true);
- buddy=new BrowserWindow({...shared,width:32,height:32,transparent:true,alwaysOnTop:true,focusable:false,skipTaskbar:true,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false}});buddy.setIgnoreMouseEvents(true);
+ buddy=new BrowserWindow({...shared,width:32,height:32,transparent:true,alwaysOnTop:true,focusable:false,skipTaskbar:true});buddy.setIgnoreMouseEvents(true);
  [panel,toolbar,chat,marker,buddy].forEach(secure);
  for(const w of [panel,toolbar,chat])w.on('close',e=>{if(!quitting){e.preventDefault();w.hide();}});
  const handle=(name:string,allowed:()=>BrowserWindow[],fn:(input:any)=>unknown)=>ipcMain.handle(name,async(e,input)=>{if(!allowed().some(w=>w.webContents===e.sender)||e.senderFrame!==e.sender.mainFrame)throw new Error('Invalid sender');return fn(input);});
  const all=()=>[panel,toolbar,chat],manage=()=>[panel,toolbar];
- handle('lab:management',()=>[panel],management);handle('lab:import',()=>[panel],importRecording);handle('lab:open-recordings',manage,()=>shell.openPath(recordingsDirectory()));handle('lab:shortcuts',all,()=>shortcutRows);
+ handle('lab:cursor',()=>[panel,buddy],()=>cursorAppearance);handle('lab:set-cursor',()=>[panel],value=>{if(!value||!/^#[0-9a-fA-F]{6}$/.test(value.color)||!['arrow','triangle','diamond'].includes(value.shape))throw new Error('Pilihan cursor tidak valid.');cursorAppearance={color:value.color,shape:value.shape};writeFileSync(path.join(app.getPath('userData'),'cursor.json'),JSON.stringify(cursorAppearance),'utf8');buddy.webContents.send('lab:cursor',cursorAppearance);return cursorAppearance;});
+ handle('lab:choose-import',()=>[panel],()=>previewRecording());handle('lab:confirm-import',()=>[panel],async()=>{if(!pendingFile)throw new Error('Pilih rekaman dahulu.');await importRecording(pendingFile);pendingFile=undefined;importPreview=null;showManagement();update();return state();});
+ handle('lab:management',()=>[panel],management);handle('lab:recordings',()=>[panel],()=>listRecordings());handle('lab:delete-recording',()=>[panel],fileName=>{if(typeof fileName!=='string'||path.basename(fileName)!==fileName||!fileName.toLowerCase().endsWith('.lighthouse'))throw new Error('Nama file rekaman tidak valid.');const file=path.join(recordingsDirectory(),fileName);if(!existsSync(file))throw new Error('Rekaman tidak ditemukan.');unlinkSync(file);return listRecordings();});handle('lab:preview-recording',()=>[panel],fileName=>{if(typeof fileName!=='string'||path.basename(fileName)!==fileName)throw new Error('Nama file rekaman tidak valid.');return previewRecording(path.join(recordingsDirectory(),fileName));});handle('lab:import',()=>[panel],()=>importRecording());handle('lab:open-recordings',manage,()=>shell.openPath(recordingsDirectory()));handle('lab:shortcuts',all,()=>shortcutRows);
  handle('lab:state',all,state);handle('lab:group',all,()=>api('/v1/group'));
  handle('lab:create',()=>[panel],async input=>{if(session)throw new Error('Keluar dari group sebelumnya dulu.');session=await api('/v1/groups',{...input,device:deviceInfo()});save();syncRole();return state();});
  handle('lab:join',()=>[panel],async input=>{if(session)throw new Error('Keluar dari group sebelumnya dulu.');session=await api('/v1/join',{...input,device:deviceInfo()});save();lastSeq=0;lastRecording='';syncRole();return state();});
- handle('lab:leave',manage,async()=>{if(recordingId)await stop();try{await api('/v1/leave',{});}catch{}session=undefined;save();syncRole();return state();});
- handle('lab:close',manage,async()=>{if(recordingId)await stop();await api('/v1/group/close',{});session=undefined;save();syncRole();return state();});
+ handle('lab:leave',manage,async()=>{if(recordingId)await stop();try{await api('/v1/leave',{});}catch{}session=undefined;conversation=[];lastStepId='';save();syncRole();return state();});
+ handle('lab:close',manage,async()=>{if(recordingId)await stop();await api('/v1/group/close',{});session=undefined;conversation=[];lastStepId='';save();syncRole();return state();});
  handle('lab:settings',manage,input=>api('/v1/group/settings',input));
  handle('lab:copy',manage,()=>{if(session)clipboard.writeText(session.group.code);});
  handle('lab:record',()=>[toolbar],record);handle('lab:pause',()=>[toolbar],async()=>{await pause();return state();});
@@ -208,6 +227,7 @@ app.whenReady().then(async()=>{
  const work=screen.getPrimaryDisplay().workArea;toolbar.setPosition(Math.round(work.x+(work.width-400)/2),work.y+18);
  tray=new Tray(nativeImage.createFromPath(path.join(dir,'ui/tray.png')));tray.on('click',()=>{if(session?.role==='assistant')toolbar.show();else showPanel();});
  syncRole();
+ const openedFile=fileArgument(process.argv);if(openedFile)void previewRecording(openedFile).catch(e=>dialog.showErrorBox('Rekaman tidak dapat dibuka',e.message));
  setInterval(()=>{if(session?.role==='assistant')void management().catch(()=>{});},30000).unref();
  setInterval(()=>{if(recordingId&&!upload){persistRecorder();if(stopRequested)void stop().catch(()=>{});else if(queue.length)void flush().catch(()=>{});}},5000).unref();
  setInterval(()=>{
