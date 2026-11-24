@@ -1,10 +1,10 @@
 <p align="center"><img src="src/ui/logo.png" alt="Lighthouse - guide cursor for computer labs" width="600"></p>
 
-# Lighthouse Desktop Ã°Å¸â€Â¦
+# Lighthouse Desktop ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â¦
 
 A small lab companion that turns an assistant's demonstration into guidance on a student's own screen.
 
-[Download for Windows](https://github.com/LightHoouse/LightHouse-App/releases/latest) Ã‚Â· [Backend](https://github.com/LightHoouse/LightHosue-Backend) Ã‚Â· [AI service](https://github.com/LightHoouse/LightHouse-AI)
+[Download the latest release](https://github.com/LightHoouse/LightHouse-App/releases/latest) Ãƒâ€šÃ‚Â· [Backend](https://github.com/LightHoouse/LightHosue-Backend) Ãƒâ€šÃ‚Â· [AI service](https://github.com/LightHoouse/LightHouse-AI)
 
 ## See it in action
 
@@ -29,6 +29,8 @@ The main flows are captured below so the product surface is visible without inst
 | Recording toolbar | Import preview |
 | --- | --- |
 | ![Recording toolbar](docs/screenshots/recorder-toolbar.png) | ![Import preview](docs/screenshots/import-preview.png) |
+Release assets are labeled by platform: **Windows** uses the .exe installer and native Windows UI Automation; **macOS** uses .dmg/.zip packaging and is currently a preview build while the Windows recorder bridge is ported; **iOS/iPadOS is not an Electron target** and needs a separate native mobile client before TestFlight or App Store distribution.
+
 ## Use it
 
 1. **Assistant:** enter your name, create a group, and share its code.
@@ -48,7 +50,7 @@ No MQTT, database, or AI credentials are needed in the installer. HTTPS connects
 - Explicit failure for ambiguous or missing targets; the click-through companion never takes control of input.
 - Source and packaged two-client E2E tests against a real MongoDB test instance and a separate native Windows target.
 
-This is a Windows prototype. Custom-drawn controls, elevated apps, complex menus, and browser DOM locators are not covered. The app does not execute actions or infer overall task completion. After a target click it compares observed UI changes where evidence exists; otherwise the result is unverifiable. Pending recordings survive process restarts and resume paused. A pending Stop is retried after uploads finish. The installer is unsigned.
+This is a Windows-first prototype. Custom-drawn controls, elevated apps, complex menus, and browser DOM locators are not covered. The app does not execute actions or infer overall task completion. After a target click it compares observed UI changes where evidence exists; otherwise the result is unverifiable. Pending recordings survive process restarts and resume paused. A pending Stop is retried after uploads finish. Installers are unsigned.
 
 ## Development
 

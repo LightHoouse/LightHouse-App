@@ -7,6 +7,7 @@
     "build": "node scripts/build.mjs",
     "check": "tsc -p tsconfig.json --noEmit",
     "package": "npm run build && electron-builder --win nsis --publish never",
+    "package:mac": "npm run build && electron-builder --mac dmg zip --publish never",
     "test": "npm run build && playwright test"
   },
   "devDependencies": {
