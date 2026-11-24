@@ -81,11 +81,11 @@ For the optional Windows Calculator test, open Calculator, set `LIGHTHOUSE_REAL_
 
 ## Local classroom tools
 
-Open **Kelola kelas** from the group panel to see members and the latest 200 questions. The assistant's laptop keeps an encrypted cache for offline reading; new questions still require the server. Students see a notice that the assistant can read their questions.
+Open **Kelola kelas** from the group panel to see students with their reported local IP, then select a person for their question history (latest 200 questions per class). A device ID distinguishes devices when IPs change. Only assistants receive device/IP metadata. The assistant's laptop keeps an encrypted cache for offline reading; new questions still require the server. Students see a notice that the assistant can read their name, local IP and questions. Stop opens the session summary automatically.
 
 **Stop** automatically writes a `.lighthouse` JSON recording to `Documents/Lighthouse/Recordings`. Use **Folder rekaman** to find it. Copy the file to another laptop, create a group as an assistant, and choose **Impor rekaman**. Import validates the version and every action, generates new event IDs, and uploads a new session to the current group. Files contain accessible target context and observed states; they contain no membership token, API credential or typed input contents. Treat app labels and window titles in a shared file as classroom data. If offline, the file is still saved and upload/Stop completes on reconnect. Importing into a group needs connectivity.
 
-Recordings include scroll direction/delta and drag start/end normalized to an accessible target. The blue companion animates the recorded path on the student's live target, without moving their real pointer. Scroll is acknowledged only inside the target in the recorded direction; drag requires a matching press/release near both endpoints. Canvas targets must expose a unique UI Automation identity; arbitrary Figma canvases, changed zoom/pan or layouts are not certified. The format stores target-relative points, not portable document object coordinates.
+Recordings include scroll direction/delta and drag start/end and sampled path normalized to an accessible target, plus modifiers and supported command shortcuts. The blue companion animates the recorded path on the student's live target, without moving their real pointer. Scroll is acknowledged only inside the target in the recorded direction; drag requires a matching press/release near both endpoints. Canvas targets must expose a unique UI Automation identity; arbitrary Figma canvases, changed zoom/pan or layouts are not certified. The format stores target-relative points, not portable document object coordinates.
 
 | Shortcut | Action |
 | --- | --- |
@@ -99,3 +99,5 @@ Recordings include scroll direction/delta and drag start/end normalized to an ac
 | Enter / Esc | Send question / close chat |
 
 The shortcut page reports registration conflicts. Shortcuts do not execute actions in the student's application.
+
+See [action coverage](docs/action-coverage.md) for the tested gesture model and application-specific limits. Classroom layout references: [Steep](https://mobbin.com/screens/88db9a18-c55d-4103-924b-6bb77ff067e9) and [Hashnode](https://mobbin.com/screens/8e2f4a34-2689-4461-aae2-e0032539b387) via Mobbin.

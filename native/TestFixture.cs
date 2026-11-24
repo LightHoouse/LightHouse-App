@@ -60,7 +60,7 @@ class TestFixture {
     var b=element.Current.BoundingRectangle;int sx=(int)(b.X+b.Width*.25),sy=(int)(b.Y+b.Height*.25),ex=(int)(b.X+b.Width*.75),ey=(int)(b.Y+b.Height*.75);
     SetCursorPos(sx,sy);Thread.Sleep(120);
     if(args[0]=="scroll"){mouse_event(0x800,0,0,unchecked((uint)-120),UIntPtr.Zero);Thread.Sleep(300);return;}
-    mouse_event(2,0,0,0,UIntPtr.Zero);for(int i=1;i<=15;i++){SetCursorPos(sx+(ex-sx)*i/15,sy+(ey-sy)*i/15);Thread.Sleep(40);}mouse_event(4,0,0,0,UIntPtr.Zero);Thread.Sleep(300);return;
+    mouse_event(2,0,0,0,UIntPtr.Zero);for(int i=1;i<=15;i++){int x=sx+(ex-sx)*i/15,y=sy+(ey-sy)*i/15;var desktop=SystemInformation.VirtualScreen;mouse_event(0xC001,(uint)((x-desktop.X)*65535/(desktop.Width-1)),(uint)((y-desktop.Y)*65535/(desktop.Height-1)),0,UIntPtr.Zero);Thread.Sleep(40);}mouse_event(4,0,0,0,UIntPtr.Zero);Thread.Sleep(300);return;
   }
   var r=element.Current.BoundingRectangle;SetCursorPos((int)(r.X+r.Width/2),(int)(r.Y+r.Height/2));mouse_event(2,0,0,0,UIntPtr.Zero);Thread.Sleep(150);mouse_event(4,0,0,0,UIntPtr.Zero);
   if(args[0]=="type"){for(int i=0;i<3;i++){keybd_event(0x41,0,0,UIntPtr.Zero);Thread.Sleep(100);keybd_event(0x41,0,2,UIntPtr.Zero);Thread.Sleep(80);}}

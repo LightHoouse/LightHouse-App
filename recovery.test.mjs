@@ -31,6 +31,7 @@ test('portable files validate before import and merge enrichments without secret
  const data={format:'lighthouse-recording',version:1,name:'Lesson',createdAt:1,steps:[step]};
  assert.equal(portableSchema.parse(JSON.parse(JSON.stringify(data))).steps[0].event,'dragDrop');
  assert.equal(portableSchema.safeParse({...data,token:'secret'}).success,false);
+ assert.equal(portableSchema.safeParse({...data,steps:[step,step]}).success,false);
  assert.equal(portableSchema.safeParse({...data,steps:[{...step,typedText:'secret'}]}).success,false);
  assert.equal(portableSchema.safeParse({...data,steps:[{...step,motion:{start:[-1,0],end:[1,1]}}]}).success,false);
  const events=[];mergeEvent(events,step);mergeEvent(events,{...step,enrichment:true,capture:{postState:{elements:[]}}});assert.equal(events.length,1);assert.equal(events[0].enrichment,false);assert.deepEqual(events[0].capture.postState.elements,[]);

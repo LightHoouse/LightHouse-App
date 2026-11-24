@@ -1,3 +1,4 @@
+import {networkInterfaces} from 'node:os';
 import {randomUUID} from 'node:crypto';
 import {portableSchema,mergeEvent} from './portable.js';
 import {app,dialog,shell,BrowserWindow,ipcMain,screen,safeStorage,globalShortcut,Tray,Menu,nativeImage,clipboard} from 'electron';
@@ -23,7 +24,8 @@ let recorder:ChildProcess|undefined,recordingId='',recording=false,queue:unknown
 let quitting=false,hotkey=false,studentContext:WindowInfo|undefined,lastSeq=0,lastRecording='',markerTimer:ReturnType<typeof setTimeout>|undefined;
 let lastEvent='',guideStatus='idle',stopRequested=false;
 let journal:RecorderStore;
-let storage:ReturnType<typeof localCrypto>;
+let storage:ReturnType<typeof localCrypto>,deviceId='';
+function deviceInfo(){return {deviceId,localIps:[...new Set(Object.values(networkInterfaces()).flatMap(rows=>(rows||[]).filter(r=>r.family==='IPv4'&&!r.internal&&/^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(r.address)).map(r=>r.address)))].slice(0,8)};}
 function decryptLocal(data:Buffer){return data.subarray(0,3).toString()==='LH1'?storage.decrypt(data):safeStorage.decryptString(data);}
 let stopping:Promise<void>|undefined;
 let recordedEvents:any[]=[],lastExport='',shortcutRows:{key:string;label:string;available?:boolean}[]=[];
@@ -33,8 +35,8 @@ let shortcutHelper:ChildProcess|undefined;
 let chatAnchor={x:0,y:0};
 let guidePoint:{x:number;y:number}|undefined,guideWatcher:ChildProcess|undefined,buddyPosition:{x:number;y:number}|undefined;
 let chatSize={expanded:false,width:116,height:180};
-let chatPlacement='';
-let gesturePath:{start:{x:number;y:number};end:{x:number;y:number};started:number}|undefined;
+let chatPlacement='',guideVersion=0;
+let gesturePath:{start:{x:number;y:number};end:{x:number;y:number};points?:{x:number;y:number}[];started:number}|undefined;
 function sizeChat(expanded:boolean,composerWidth=116,replyHeight=180){
  chatSize={expanded,width:composerWidth,height:replyHeight};
  const area=screen.getDisplayNearestPoint(chatAnchor).workArea;
@@ -56,8 +58,9 @@ function freezeRecording(){recordElapsedMs=elapsedRecording();recording=false;}
 function state(){return {lastExport,session:session?{role:session.role,group:session.group}:null,recording,recordingId,captured,uploaded,pending:queue.length,recordError,recordElapsedMs:elapsedRecording(),hotkey,lastEvent,hotkeyAt,chatError,guideStatus,guidePoint:guidePoint||null};}
 function update(){for(const w of [panel,toolbar,chat])if(w&&!w.isDestroyed())w.webContents.send('lab:state',state());}
 function hideGuide(){gesturePath=undefined;guideStatus='dismissed';guidePoint=undefined;const observer=guideWatcher;guideWatcher=undefined;observer?.kill();marker.hide();if(markerTimer)clearTimeout(markerTimer);}
-function hideChat(){chat.hide();hideGuide();}
-function showPanel(){panel.show();panel.focus();update();}
+function hideChat(){guideVersion++;chat.hide();hideGuide();}
+function showManagement(){showPanel();panel.webContents.send('lab:management-open');}
+function showPanel(){panel.show();panel.focus();panel.webContents.send('lab:panel-open');update();}
 async function flush(){if(upload)return upload;upload=(async()=>{while(queue.length){await api(`/v1/recordings/${recordingId}/steps`,queue[0]);const sent=queue.shift() as any;if(!sent?.enrichment)uploaded++;recordError='';persistRecorder();update();}})();try{await upload;}catch(e){recordError='Menghubungkan ulang?';update();throw e;}finally{upload=undefined;}}
 async function startRecorder(){
  recordError='';recorder=spawn(nativePath(),['record-all'],{windowsHide:true,stdio:['pipe','pipe','pipe']});const child=recorder;
@@ -92,7 +95,7 @@ function setupShortcuts(){
  register('Alt+Shift+K','Lihat shortcut',()=>{showPanel();panel.webContents.send('lab:shortcuts');});
  if(session?.role==='assistant'){
   register('Alt+Shift+R','Mulai / jeda / lanjutkan rekaman',()=>{void (recording?pause():recordingId?(stopRequested?Promise.reject(new Error('Sesi sedang diselesaikan.')):startRecorder()):record()).catch(e=>{recordError=e.message;update();});});
-  register('Alt+Shift+S','Stop dan simpan rekaman',()=>{void stop().catch(e=>{recordError=e.message;update();});});
+  register('Alt+Shift+S','Stop dan simpan rekaman',()=>{void stop().then(showManagement).catch(e=>{recordError=e.message;update();});});
   register('Alt+Shift+O','Buka folder rekaman',()=>{void shell.openPath(recordingsDirectory());});
  }
  if(session?.role==='student')shortcutRows.push({key:'Alt + L',label:'Buka / tutup pertanyaan',available:hotkey});
@@ -135,7 +138,7 @@ async function guideStream(body:unknown,requestId:string){
 }
 function setGesture(r:{x:number;y:number;width:number;height:number},step:any){
  const point=(v:number[])=>({x:r.x+r.width*v[0]-16,y:r.y+r.height*v[1]-16});
- if(step.event==='dragDrop'&&step.motion)gesturePath={start:point(step.motion.start),end:point(step.motion.end),started:gesturePath?.started||performance.now()};
+ if(step.event==='dragDrop'&&step.motion)gesturePath={start:point(step.motion.start),end:point(step.motion.end),points:step.motion.points?.map(point),started:gesturePath?.started||performance.now()};
  else if(step.event==='scroll')gesturePath={start:point([.5,.5]),end:point([.5,step.direction==='up'?.35:.65]),started:gesturePath?.started||performance.now()};
 }
 async function observeOutcome(target:WindowInfo,command:any,interaction='target-clicked'){
@@ -148,7 +151,7 @@ async function observeOutcome(target:WindowInfo,command:any,interaction='target-
  await api('/v1/ack',{cmdId:command.cmdId,stepId:command.step.stepId,resolved:true,strategy:null,interaction,outcome});
 }
 function watchTarget(target:WindowInfo,locator:unknown,action:string,command:any){
- const child=spawn(nativePath(),['watch',target.handle,Buffer.from(JSON.stringify(locator)).toString('base64'),action,Buffer.from(JSON.stringify(command.step.motion||{direction:command.step.direction||''})).toString('base64')],{windowsHide:true,stdio:['ignore','pipe','pipe']});guideWatcher=child;guideStatus='watching';
+ const child=spawn(nativePath(),['watch',target.handle,Buffer.from(JSON.stringify(locator)).toString('base64'),action,Buffer.from(JSON.stringify({...command.step.motion,direction:command.step.direction||'',button:command.step.button||'left',modifiers:command.step.modifiers||[],key:command.step.key||''})).toString('base64')],{windowsHide:true,stdio:['ignore','pipe','pipe']});guideWatcher=child;guideStatus='watching';
  createInterface({input:child.stdout!}).on('line',line=>{try{if(guideWatcher!==child)return;const event=JSON.parse(line.replace(/^\uFEFF/,''));if(event.kind==='target-position'){const b=event.bounds;if([b.x,b.y,b.width,b.height].every(Number.isFinite)&&b.width>0&&b.height>0){const r=screen.screenToDipRect(null,{x:Math.round(b.x),y:Math.round(b.y),width:Math.round(b.width),height:Math.round(b.height)});guidePoint={x:r.x+r.width/2-16,y:r.y+r.height/2-16};setGesture(r,command.step);}}else if(event.kind==='target-clicked'||event.kind==='gesture-completed'||event.kind==='target-lost'||event.kind==='error'){hideGuide();guideStatus=event.kind;if(event.kind==='target-clicked'||event.kind==='gesture-completed')void observeOutcome(target,command,event.kind).catch(()=>{});chat.webContents.send('chat:target',{status:event.kind==='target-clicked'?'clicked':event.kind==='gesture-completed'?'gesture':'lost'});}}catch{}});
  child.on('error',()=>{if(guideWatcher===child){hideGuide();guideStatus='watch-error';}});child.on('exit',(code)=>{if(guideWatcher===child){hideGuide();guideStatus='watch-exit-'+code;}});
 }
@@ -159,18 +162,20 @@ async function guide(input:any){
  const snapshot=context?await native(['snapshot',context.handle]):{visibleNames:[]};
  const question=typeof input?.question==='string'?input.question.trim().slice(0,1000):'';
  if(!question&&!input?.next)throw new Error('Tulis pertanyaanmu dulu.');
- hideGuide();
+ hideGuide();const requestVersion=++guideVersion;
  const command=await guideStream({...(input?.next&&lastRecording?{recordingId:lastRecording}:{}),question,afterSeq:input?.next?lastSeq:0,visibleNames:snapshot.visibleNames||[],activeProcess:context?.process||''},typeof input?.requestId==='string'?input.requestId.slice(0,80):'');
+ if(requestVersion!==guideVersion)throw new Error('Pertanyaan dibatalkan.');
  hideGuide();if(command.done)return {done:true,message:'Kamu sudah sampai di akhir rekaman.'};
  const windows:WindowInfo[]=await native(['windows']);const matches=windows.filter(w=>w.process===command.step.window.process);
  const target=context?.process===command.step.window.process?context:matches.length===1?matches[0]:undefined;
  const resolution=target?await native(['resolve',target.handle,Buffer.from(JSON.stringify(command.step.target)).toString('base64')]):{resolved:false,reason:matches.length>1?'Ada beberapa jendela aplikasi. Buka jendela yang kamu pakai, lalu tekan Alt+L lagi.':`Buka ${command.step.window.process} dulu, lalu tekan Alt+L lagi.`};
  if(resolution.resolved){const b=resolution.bounds;if(![b.x,b.y,b.width,b.height].every(Number.isFinite)||b.width<=0||b.height<=0)throw new Error('Elemen belum bisa ditunjuk.');const r=screen.screenToDipRect(null,{x:Math.round(b.x),y:Math.round(b.y),width:Math.round(b.width),height:Math.round(b.height)});guidePoint={x:r.x+r.width/2-16,y:r.y+r.height/2-16};setGesture(r,command.step);watchTarget(target!,command.step.target,command.step.event,command);lastSeq=command.step.seq;lastRecording=command.step.recordingId;}
  await api('/v1/ack',{cmdId:command.cmdId,stepId:command.step.stepId,resolved:Boolean(resolution.resolved),strategy:resolution.strategy||null});
- return {message:command.explanation||command.say,instruction:command.say,resolved:Boolean(resolution.resolved),reason:resolution.reason||'',event:command.step.event,source:command.source,seq:command.step.seq,total:command.total};
+ return {message:command.explanation||command.say,instruction:command.say,resolved:Boolean(resolution.resolved),reason:resolution.reason||'',event:command.step.event,shortcut:[...(command.step.modifiers||[]),command.step.key||''].filter(Boolean).join(' + '),source:command.source,seq:command.step.seq,total:command.total};
 }
 app.whenReady().then(async()=>{
  storage=localCrypto(app.getPath('userData'),nativePath());
+ const deviceFile=path.join(app.getPath('userData'),'device-id');deviceId=existsSync(deviceFile)?readFileSync(deviceFile,'utf8').trim():randomUUID();writeFileSync(deviceFile,deviceId,'utf8');
  try{const p=path.join(app.getPath('userData'),'membership.enc');if(existsSync(p)&&safeStorage.isEncryptionAvailable())session=JSON.parse(decryptLocal(readFileSync(p)));}catch{}
  if(!safeStorage.isEncryptionAvailable())throw new Error('Encrypted local storage is unavailable');
  journal=new RecorderStore(path.join(app.getPath('userData'),'recorder.enc'),s=>storage.encrypt(s),b=>decryptLocal(b));
@@ -187,15 +192,15 @@ app.whenReady().then(async()=>{
  const all=()=>[panel,toolbar,chat],manage=()=>[panel,toolbar];
  handle('lab:management',()=>[panel],management);handle('lab:import',()=>[panel],importRecording);handle('lab:open-recordings',manage,()=>shell.openPath(recordingsDirectory()));handle('lab:shortcuts',all,()=>shortcutRows);
  handle('lab:state',all,state);handle('lab:group',all,()=>api('/v1/group'));
- handle('lab:create',()=>[panel],async input=>{if(session)throw new Error('Keluar dari group sebelumnya dulu.');session=await api('/v1/groups',input);save();syncRole();return state();});
- handle('lab:join',()=>[panel],async input=>{if(session)throw new Error('Keluar dari group sebelumnya dulu.');session=await api('/v1/join',input);save();lastSeq=0;lastRecording='';syncRole();return state();});
+ handle('lab:create',()=>[panel],async input=>{if(session)throw new Error('Keluar dari group sebelumnya dulu.');session=await api('/v1/groups',{...input,device:deviceInfo()});save();syncRole();return state();});
+ handle('lab:join',()=>[panel],async input=>{if(session)throw new Error('Keluar dari group sebelumnya dulu.');session=await api('/v1/join',{...input,device:deviceInfo()});save();lastSeq=0;lastRecording='';syncRole();return state();});
  handle('lab:leave',manage,async()=>{if(recordingId)await stop();try{await api('/v1/leave',{});}catch{}session=undefined;save();syncRole();return state();});
  handle('lab:close',manage,async()=>{if(recordingId)await stop();await api('/v1/group/close',{});session=undefined;save();syncRole();return state();});
  handle('lab:settings',manage,input=>api('/v1/group/settings',input));
  handle('lab:copy',manage,()=>{if(session)clipboard.writeText(session.group.code);});
  handle('lab:record',()=>[toolbar],record);handle('lab:pause',()=>[toolbar],async()=>{await pause();return state();});
  handle('lab:resume',()=>[toolbar],async()=>{if(stopRequested)throw new Error('Sesi sedang diselesaikan. Tunggu sinkronisasi.');if(!recordingId||recording)throw new Error('Tidak ada rekaman yang dijeda.');await startRecorder();return state();});
- handle('lab:stop',()=>[toolbar],async()=>{await stop();return state();});
+ handle('lab:stop',()=>[toolbar],async()=>{await stop();showManagement();return state();});
  handle('lab:chat-size',()=>[chat],input=>sizeChat(input?.expanded===true,Number.isFinite(input?.width)?input.width:116,Number.isFinite(input?.height)?input.height:180));
  handle('lab:guide',()=>[chat],guide);handle('lab:open-chat',()=>[panel],()=>openChat());handle('lab:hide-chat',()=>[chat],hideChat);
  handle('lab:show-panel',all,showPanel);handle('lab:hide-panel',()=>[panel],()=>panel.hide());handle('lab:quit',manage,quit);
@@ -211,7 +216,8 @@ app.whenReady().then(async()=>{
   if(chat.isVisible()&&(p.x!==chatAnchor.x||p.y!==chatAnchor.y)){chatAnchor=p;sizeChat(chatSize.expanded,chatSize.width,chatSize.height);}
   const a=screen.getDisplayNearestPoint(guidePoint||p).workArea;
   const phase=gesturePath?Math.min(1,((performance.now()-gesturePath.started)%2200)/1500):0;
-  const point=gesturePath?{x:gesturePath.start.x+(gesturePath.end.x-gesturePath.start.x)*phase,y:gesturePath.start.y+(gesturePath.end.y-gesturePath.start.y)*phase}:guidePoint||{x:p.x+19,y:p.y+9};
+  const points=gesturePath?.points|| (gesturePath?[gesturePath.start,gesturePath.end]:[]);const index=Math.min(Math.max(0,points.length-2),Math.floor(phase*Math.max(1,points.length-1)));const fraction=phase*Math.max(1,points.length-1)-index;
+  const point=points.length>1?{x:points[index].x+(points[index+1].x-points[index].x)*fraction,y:points[index].y+(points[index+1].y-points[index].y)*fraction}:guidePoint||{x:p.x+19,y:p.y+9};
   const target={x:Math.max(a.x,Math.min(point.x,a.x+a.width-32)),y:Math.max(a.y,Math.min(point.y,a.y+a.height-32))};
   if(!buddyPosition)buddyPosition={x:p.x+19,y:p.y+9};
   if(!guidePoint&&Math.hypot(target.x-buddyPosition.x,target.y-buddyPosition.y)>600)buddyPosition=target;
