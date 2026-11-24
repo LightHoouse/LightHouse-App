@@ -1,11 +1,18 @@
 <p align="center"><img src="src/ui/logo.png" alt="Lighthouse - guide cursor for computer labs" width="600"></p>
 
-# Lighthouse Desktop 🔦
+# Lighthouse Desktop ðŸ”¦
 
 A small lab companion that turns an assistant's demonstration into guidance on a student's own screen.
 
-[Download for Windows](https://github.com/LightHoouse/LightHouse-App/releases/latest) · [Backend](https://github.com/LightHoouse/LightHosue-Backend) · [AI service](https://github.com/LightHoouse/LightHouse-AI)
+[Download for Windows](https://github.com/LightHoouse/LightHouse-App/releases/latest) Â· [Backend](https://github.com/LightHoouse/LightHosue-Backend) Â· [AI service](https://github.com/LightHoouse/LightHouse-AI)
 
+## See it in action
+
+<p align="center"><img src="docs/screenshots/welcome.png" alt="Lighthouse group join screen" width="420"></p>
+<p align="center"><em>Students join a class with a short group code.</em></p>
+
+<p align="center"><img src="docs/screenshots/student-chat.png" alt="Lighthouse contextual student chat" width="420"></p>
+<p align="center"><em>Questions open beside the cursor and stream a grounded answer from the class recording.</em></p>
 ## Use it
 
 1. **Assistant:** enter your name, create a group, and share its code.
