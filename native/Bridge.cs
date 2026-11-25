@@ -133,7 +133,8 @@ class Bridge {
       if((RecordAll?Allowed(h):h==Window)&&Shortcuts.Count<50){
         bool command=(GetAsyncKeyState(17)&0x8000)!=0||(GetAsyncKeyState(18)&0x8000)!=0;
         bool ownShortcut=(GetAsyncKeyState(18)&0x8000)!=0&&(key==71||key==72||key==76||((GetAsyncKeyState(16)&0x8000)!=0&&(key==82||key==83||key==79||key==75)));
-        if(command&&!ownShortcut&&((key>=65&&key<=90)||key==46))Shortcuts.Enqueue(Tuple.Create(h,key==46?"Delete":((char)key).ToString(),Modifiers()));
+        string keyName=key==46?"Delete":key==27?"Escape":key==9?"Tab":key==13?"Enter":key>=112&&key<=123?"F"+(key-111):command&&key>=65&&key<=90?((char)key).ToString():null;
+        if(!ownShortcut&&keyName!=null)Shortcuts.Enqueue(Tuple.Create(h,keyName,Modifiers()));
       }
       if((key==8||key==32||(key>=0x30&&key<=0x5A)||(key>=186&&key<=222))&&(GetAsyncKeyState(17)&0x8000)==0&&(GetAsyncKeyState(18)&0x8000)==0&&(RecordAll?Allowed(h):h==Window)){
         long now=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
