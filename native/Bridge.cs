@@ -9,6 +9,14 @@ using System.Windows.Automation;
 using System.Windows.Forms;
 
 class Bridge {
+  // Hook callbacks must never wait for a UI Automation provider. A separate
+  // STA consumes these queues while the hook thread keeps pumping messages.
+  class InputQueue<T> {
+    readonly Queue<T> queue=new Queue<T>();
+    public int Count {get {lock(queue)return queue.Count;}}
+    public void Enqueue(T item){lock(queue)queue.Enqueue(item);}
+    public T Dequeue(){lock(queue)return queue.Dequeue();}
+  }
   static JavaScriptSerializer Json = new JavaScriptSerializer();
   delegate bool EnumProc(IntPtr h, IntPtr p);
   delegate IntPtr HookProc(int code, IntPtr message, IntPtr data);
@@ -29,16 +37,16 @@ class Bridge {
   [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
   static IntPtr Window,Hook,KeyboardHook;
   static HookProc RecordKeyCallback=OnRecordKey;
-  static Queue<IntPtr> TypedPending=new Queue<IntPtr>();
+  static InputQueue<IntPtr> TypedPending=new InputQueue<IntPtr>();
   static HookProc Callback=OnMouse;
   static HookProc KeyCallback=OnKey;
   static bool ShortcutDown;
-  static Queue<Tuple<int,MouseData,IntPtr>> Pending=new Queue<Tuple<int,MouseData,IntPtr>>();
+  static InputQueue<Tuple<int,MouseData,IntPtr>> Pending=new InputQueue<Tuple<int,MouseData,IntPtr>>();
   static Tuple<int,MouseData,IntPtr> Pressed;
   static bool MouseHeld;
   static long LastMove;
   static List<Point> Stroke=new List<Point>();
-  static Queue<Tuple<IntPtr,string,string[]>> Shortcuts=new Queue<Tuple<IntPtr,string,string[]>>();
+  static InputQueue<Tuple<IntPtr,string,string[]>> Shortcuts=new InputQueue<Tuple<IntPtr,string,string[]>>();
   static string[] Modifiers(){var list=new List<string>();if((GetAsyncKeyState(17)&0x8000)!=0)list.Add("Control");if((GetAsyncKeyState(16)&0x8000)!=0)list.Add("Shift");if((GetAsyncKeyState(18)&0x8000)!=0)list.Add("Alt");if((GetAsyncKeyState(32)&0x8000)!=0)list.Add("Space");return list.ToArray();}
   static bool RecordAll;
   static volatile bool StopRequested;
@@ -149,6 +157,7 @@ class Bridge {
     KeyboardHook=SetWindowsHookEx(13,RecordKeyCallback,GetModuleHandle(null),0);
     if(Hook==IntPtr.Zero||KeyboardHook==IntPtr.Zero)throw new Exception("Cannot start recorder");
     new Thread(()=>{Console.ReadLine();StopRequested=true;}){IsBackground=true}.Start();
+    var worker=new Thread(()=>{
     var timer=new System.Windows.Forms.Timer();timer.Interval=30;long lastSnapshot=0;
     timer.Tick+=(s,a)=>{
       try {
@@ -169,6 +178,10 @@ class Bridge {
             }
           }
           object motion=null;
+          // WinUI toolbar icons can be unnamed Image children of a named
+          // Button. Preserve the actionable ancestor instead of dropping clicks.
+          while(element!=null&&InWindow(element)&&element.Current.AutomationId==""&&element.Current.Name==""&&element.Current.ControlType!=ControlType.Edit&&element.Current.ControlType!=ControlType.Document)
+            element=TreeWalker.ControlViewWalker.GetParent(element);
           if(drag){
             Stroke.Add(finish);
             while(element!=null&&(!Stroke.TrueForAll(pt=>element.Current.BoundingRectangle.Contains(pt.x,pt.y))||(element.Current.AutomationId==""&&element.Current.Name=="")))element=TreeWalker.ControlViewWalker.GetParent(element);
@@ -195,8 +208,12 @@ class Bridge {
         }
       } catch { /* An element may disappear while an application changes screens. */ }
     };
-    timer.Start();Write(new {kind="ready"});
-    Application.Run();UnhookWindowsHookEx(Hook);UnhookWindowsHookEx(KeyboardHook);
+    timer.Start();Application.Run();timer.Stop();
+    }){IsBackground=true};worker.SetApartmentState(ApartmentState.STA);worker.Start();
+    var shutdown=new System.Windows.Forms.Timer();shutdown.Interval=50;
+    shutdown.Tick+=(s,a)=>{if(StopRequested&&!worker.IsAlive)Application.ExitThread();};shutdown.Start();
+    Write(new {kind="ready"});
+    Application.Run();shutdown.Stop();UnhookWindowsHookEx(Hook);UnhookWindowsHookEx(KeyboardHook);
   }
   static AutomationElement Locate(Dictionary<string,string> t,out string strategy) {
     var root=AutomationElement.FromHandle(Window);

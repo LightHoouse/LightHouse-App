@@ -237,9 +237,12 @@ app.whenReady().then(async()=>{
  setInterval(()=>{if(session?.role==='assistant')void management().catch(()=>{});},30000).unref();
  setInterval(()=>{if(recordingId&&!upload){persistRecorder();if(stopRequested)void stop().catch(()=>{});else if(queue.length)void flush().catch(()=>{});}},5000).unref();
  setInterval(()=>{
-  if(session?.role!=='student'||panel.isVisible()||chat.isVisible()){buddy.hide();buddyPosition=undefined;return;}
+  if(session?.role!=='student'||panel.isVisible()){buddy.hide();buddyPosition=undefined;return;}
   const p=screen.getCursorScreenPoint();
-  if(chat.isVisible()&&(p.x!==chatAnchor.x||p.y!==chatAnchor.y)){chatAnchor=p;sizeChat(chatSize.expanded,chatSize.width,chatSize.height);}
+  if(chat.isVisible()){
+   if(p.x!==chatAnchor.x||p.y!==chatAnchor.y){chatAnchor=p;sizeChat(chatSize.expanded,chatSize.width,chatSize.height);}
+   buddy.hide();buddyPosition=undefined;return;
+  }
   const a=screen.getDisplayNearestPoint(guidePoint||p).workArea;
   const phase=gesturePath?Math.min(1,((performance.now()-gesturePath.started)%2200)/1500):0;
   const points=gesturePath?.points|| (gesturePath?[gesturePath.start,gesturePath.end]:[]);const index=Math.min(Math.max(0,points.length-2),Math.floor(phase*Math.max(1,points.length-1)));const fraction=phase*Math.max(1,points.length-1)-index;
