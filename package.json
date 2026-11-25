@@ -7,7 +7,7 @@
     "build": "node scripts/build.mjs",
     "check": "tsc -p tsconfig.json --noEmit",
     "package": "npm run build && electron-builder --win nsis --publish never",
-    "package:mac": "npm run build && electron-builder --mac dmg zip --publish never",
+    "package:mac": "LIGHTHOUSE_MAC_ARCH=universal npm run build && electron-builder --mac dmg zip --universal --publish never",
     "test": "npm run build && playwright test"
   },
   "devDependencies": {
@@ -29,16 +29,46 @@
       "dist/**/*",
       "package.json"
     ],
-    "extraResources": [
-      {
-        "from": "native/bin/LighthouseBridge.exe",
-        "to": "native/LighthouseBridge.exe"
-      }
-    ],
     "win": {
       "icon": "native/icon.ico",
       "target": [
         "nsis"
+      ],
+      "extraResources": [
+        {
+          "from": "native/bin/LighthouseBridge.exe",
+          "to": "native/LighthouseBridge.exe"
+        }
+      ],
+      "fileAssociations": [
+        {
+          "ext": "lighthouse",
+          "name": "Lighthouse.Recording",
+          "description": "Lighthouse Recording",
+          "icon": "native/icon.ico",
+          "role": "Editor"
+        }
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "x64ArchFiles": "Contents/Resources/native/LighthouseBridge",
+      "extraResources": [
+        {
+          "from": "native/bin/LighthouseBridge",
+          "to": "native/LighthouseBridge"
+        }
+      ],
+      "fileAssociations": [
+        {
+          "ext": "lighthouse",
+          "name": "Lighthouse.Recording",
+          "description": "Lighthouse Recording",
+          "role": "Editor"
+        }
       ]
     },
     "nsis": {
@@ -52,16 +82,7 @@
     },
     "directories": {
       "output": "release"
-    },
-    "fileAssociations": [
-      {
-        "ext": "lighthouse",
-        "name": "Lighthouse.Recording",
-        "description": "Lighthouse Recording",
-        "icon": "native/icon.ico",
-        "role": "Editor"
-      }
-    ]
+  }
   },
   "version": "0.3.3",
   "description": "Lighthouse guide cursor for computer labs",

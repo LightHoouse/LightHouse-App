@@ -56,7 +56,20 @@ function sizeChat(expanded:boolean,composerWidth=116,replyHeight=180){
 }
 
 const execute=promisify(execFile);
-const nativePath=()=>app.isPackaged?path.join(process.resourcesPath,'native/LighthouseBridge.exe'):path.join(dir,'../native/bin/LighthouseBridge.exe');
+const nativePath=()=>process.platform==='darwin'
+ ?app.isPackaged?path.join(process.resourcesPath,'native/LighthouseBridge'):path.join(dir,'../native/bin/LighthouseBridge')
+ :app.isPackaged?path.join(process.resourcesPath,'native/LighthouseBridge.exe'):path.join(dir,'../native/bin/LighthouseBridge.exe');
+function localStorage():ReturnType<typeof localCrypto>{
+ if(process.platform==='darwin'){
+  if(!safeStorage.isEncryptionAvailable())throw new Error('Keychain storage is unavailable. Unlock your login keychain and restart Lighthouse.');
+  return {encrypt:text=>Buffer.from(safeStorage.encryptString(text)),decrypt:data=>safeStorage.decryptString(data)};
+ }
+ return localCrypto(app.getPath('userData'),nativePath());
+}
+function bridgeRect(bounds:{x:number;y:number;width:number;height:number}){
+ if(process.platform==='darwin')return bounds;
+ return screen.screenToDipRect(null,{x:Math.round(bounds.x),y:Math.round(bounds.y),width:Math.round(bounds.width),height:Math.round(bounds.height)});
+}
 const webPreferences={preload:path.join(dir,'preload.cjs'),sandbox:true,contextIsolation:true,nodeIntegration:false};
 function secure(w:BrowserWindow){w.setMenu(null);w.webContents.setWindowOpenHandler(()=>({action:'deny'}));w.webContents.on('will-navigate',e=>e.preventDefault());}
 function save(){const p=path.join(app.getPath('userData'),'membership.enc');if(session)writeFileSync(p,storage.encrypt(JSON.stringify(session)));else if(existsSync(p))unlinkSync(p);}
@@ -64,7 +77,7 @@ async function api(route:string,body?:unknown){const r=await fetch(apiBase+route
 async function native(args:string[]){const {stdout}=await execute(nativePath(),args,{windowsHide:true,timeout:15000,maxBuffer:2_000_000});return JSON.parse(stdout.trim().replace(/^\uFEFF/,''));}
 function elapsedRecording(){return recordElapsedMs+(recording?Math.max(0,performance.now()-recordActiveSince):0);}
 function freezeRecording(){recordElapsedMs=elapsedRecording();recording=false;}
-function state(){return {version:app.getVersion(),update:updateInfo,lastExport,importPreview,session:session?{role:session.role,group:session.group}:null,recording,recordingId,captured,uploaded,pending:queue.length,recordError,recordElapsedMs:elapsedRecording(),hotkey,lastEvent,lastAction,hotkeyAt,chatError,guideStatus,guidePoint:guidePoint||null};}
+function state(){return {version:app.getVersion(),platform:process.platform,recordingAvailable:process.platform==='win32',update:updateInfo,lastExport,importPreview,session:session?{role:session.role,group:session.group}:null,recording,recordingId,captured,uploaded,pending:queue.length,recordError,recordElapsedMs:elapsedRecording(),hotkey,lastEvent,lastAction,hotkeyAt,chatError,guideStatus,guidePoint:guidePoint||null};}
 async function checkForUpdate(){const current=app.getVersion();try{const response=await fetch('https://api.github.com/repos/LightHoouse/LightHouse-App/releases/latest',{headers:{accept:'application/vnd.github+json','user-agent':'Lighthouse-App'},signal:AbortSignal.timeout(8000)});if(!response.ok)throw new Error('release lookup failed');const release=await response.json() as any;const latest=typeof release.tag_name==='string'?release.tag_name.replace(/^v/,''):null;updateInfo={current,latest,url:typeof release.html_url==='string'?release.html_url:null,available:Boolean(latest&&/^\d+\.\d+\.\d+$/.test(latest)&&latest.split('.').reduce((r:number,n:string,i:number)=>r||Math.sign(Number(n)-Number(current.split('-')[0].split('.')[i])),0)>0),checkedAt:Date.now()};}catch{updateInfo={current,latest:null,url:null,available:false,checkedAt:Date.now(),error:'Gagal memeriksa update. Coba lagi.'};}update();return updateInfo;}
 function update(){for(const w of [panel,toolbar,chat])if(w&&!w.isDestroyed())w.webContents.send('lab:state',state());}
 function hideGuide(){gesturePath=undefined;guideStatus='dismissed';guidePoint=undefined;const observer=guideWatcher;guideWatcher=undefined;observer?.kill();marker.hide();if(markerTimer)clearTimeout(markerTimer);}
@@ -73,7 +86,8 @@ function showManagement(){showPanel();panel.webContents.send('lab:management-ope
 function showPanel(){panel.show();panel.focus();panel.webContents.send('lab:panel-open');update();}
 async function flush(){if(upload)return upload;upload=(async()=>{while(queue.length){await api(`/v1/recordings/${recordingId}/steps`,queue[0]);const sent=queue.shift() as any;if(!sent?.enrichment)uploaded++;recordError='';persistRecorder();update();}})();try{await upload;}catch(e){recordError='Menghubungkan ulang?';update();throw e;}finally{upload=undefined;}}
 async function startRecorder(){
- recordError='';recorder=spawn(nativePath(),['record-all'],{windowsHide:true,stdio:['pipe','pipe','pipe']});const child=recorder;
+  if(process.platform==='darwin')throw new Error('Perekaman macOS belum tersedia. Gunakan versi Windows untuk merekam sesi.');
+  recordError='';recorder=spawn(nativePath(),['record-all'],{windowsHide:true,stdio:['pipe','pipe','pipe']});const child=recorder;
  await new Promise<void>((resolve,reject)=>{let ready=false;const timer=setTimeout(()=>{child.kill();reject(new Error('Recorder tidak merespons.'));},10000);
  createInterface({input:child.stdout!}).on('line',line=>{try{const row=JSON.parse(line.replace(/^\uFEFF/,''));if(row.kind==='ready'){ready=true;clearTimeout(timer);recordActiveSince=performance.now();recording=true;update();resolve();}if(row.kind==='step'||row.kind==='enrichment'){const capturedEvent={...row.step,enrichment:row.kind==='enrichment'};queue.push(capturedEvent);mergeEvent(recordedEvents,capturedEvent);if(row.kind==='step'){captured++;lastEvent=row.step.event;lastAction={event:row.step.event,key:row.step.key||null,modifiers:row.step.modifiers||[],timestamp:row.step.timestamp||Date.now()};}persistRecorder();update();void flush().catch(()=>{});}if(row.kind==='error'){recordError=row.error;update();if(!ready){clearTimeout(timer);reject(new Error(row.error));}}}catch{recordError='Penyimpanan lokal gagal. Rekaman dijeda.';void pause().catch(()=>{});update();}});
  child.on('error',()=>{clearTimeout(timer);reject(new Error('Recorder Windows tidak tersedia.'));});child.on('exit',()=>{if(recorder===child){recorder=undefined;freezeRecording();if(ready)recordError='Rekaman terjeda. Tekan lanjut.';update();}if(!ready){clearTimeout(timer);reject(new Error('Recorder gagal dimulai.'));}});
@@ -81,7 +95,7 @@ async function startRecorder(){
 }
 async function pause(){const child=recorder;recorder=undefined;freezeRecording();update();if(child){await new Promise<void>(resolve=>{const timer=setTimeout(()=>{child.kill();resolve();},2000);child.once('exit',()=>{clearTimeout(timer);resolve();});child.stdin?.on('error',()=>{});child.stdin?.write('stop\n');});}persistRecorder();}
 async function stop(){if(stopping)return stopping;stopping=(async()=>{stopRequested=true;await pause();persistRecorder();exportRecording();await flush();if(recordingId)await api(`/v1/recordings/${recordingId}/stop`,{});recordingId='';stopRequested=false;recordError='';persistRecorder();update();})();try{await stopping;}finally{stopping=undefined;}}
-async function record(){if(session?.role!=='assistant')throw new Error('Hanya asisten yang bisa merekam.');if(recordingId)throw new Error('Hentikan rekaman sebelumnya dulu.');const name='Sesi '+new Date().toLocaleString('id-ID',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});const r=await api('/v1/recordings',{name,process:'*'});recordingId=r.recordingId;recordElapsedMs=0;recordActiveSince=0;captured=uploaded=0;queue=[];recordedEvents=[];stopRequested=false;persistRecorder();await startRecorder();return state();}
+async function record(){if(process.platform==='darwin')throw new Error('Perekaman macOS belum tersedia. Gunakan versi Windows untuk merekam sesi.');if(session?.role!=='assistant')throw new Error('Hanya asisten yang bisa merekam.');if(recordingId)throw new Error('Hentikan rekaman sebelumnya dulu.');const name='Sesi '+new Date().toLocaleString('id-ID',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});const r=await api('/v1/recordings',{name,process:'*'});recordingId=r.recordingId;recordElapsedMs=0;recordActiveSince=0;captured=uploaded=0;queue=[];recordedEvents=[];stopRequested=false;persistRecorder();await startRecorder();return state();}
 function recordingsDirectory(){const folder=process.env.LIGHTHOUSE_RECORDINGS_DIR||path.join(app.getPath('documents'),'Lighthouse','Recordings');mkdirSync(folder,{recursive:true});return folder;}
 function listRecordings(){return readdirSync(recordingsDirectory(),{withFileTypes:true}).filter(e=>e.isFile()&&e.name.toLowerCase().endsWith('.lighthouse')).map(e=>{const file=path.join(recordingsDirectory(),e.name);try{const stat=statSync(file);const parsed=portableSchema.safeParse(JSON.parse(readFileSync(file,'utf8')));if(!parsed.success)return null;const data=parsed.data;return {fileName:e.name,name:data.name,createdAt:data.createdAt,actions:data.steps.length,sizeBytes:stat.size,apps:[...new Set(data.steps.map(s=>s.window.process))]};}catch{return null;}}).filter(Boolean).sort((a:any,b:any)=>b.createdAt-a.createdAt);}
 function exportRecording(){if(!recordingId||!recordedEvents.length)return;const data=portableSchema.parse({format:'lighthouse-recording',version:1,name:('Sesi '+new Date(recordedEvents[0].timestamp).toLocaleString('id-ID')).slice(0,120),createdAt:recordedEvents[0].timestamp,steps:recordedEvents});const file=path.join(recordingsDirectory(),recordingId+'.lighthouse');writeFileSync(file+'.tmp',JSON.stringify(data,null,2),'utf8');renameSync(file+'.tmp',file);lastExport=file;}
@@ -110,12 +124,17 @@ function setupShortcuts(){
  register('Alt+G','Buka group / kelola kelas',showPanel);
  register('Alt+H','Sembunyikan panel dan bantuan',()=>{panel.hide();hideChat();});
  register('Alt+Shift+K','Lihat shortcut',()=>{showPanel();panel.webContents.send('lab:shortcuts');});
- if(session?.role==='assistant'){
+  if(session?.role==='assistant'&&process.platform!=='darwin'){
   register('Alt+Shift+R','Mulai / jeda / lanjutkan rekaman',()=>{void (recording?pause():recordingId?(stopRequested?Promise.reject(new Error('Sesi sedang diselesaikan.')):startRecorder()):record()).catch(e=>{recordError=e.message;update();});});
   register('Alt+Shift+S','Stop dan simpan rekaman',()=>{void stop().then(showManagement).catch(e=>{recordError=e.message;update();});});
   register('Alt+Shift+O','Buka folder rekaman',()=>{void shell.openPath(recordingsDirectory());});
  }
- if(session?.role==='student')shortcutRows.push({key:'Alt + L',label:'Buka / tutup pertanyaan',available:hotkey});
+  if(session?.role==='student'){
+   if(process.platform==='darwin'){
+    hotkey=globalShortcut.register('Alt+L',()=>{hotkeyAt=Date.now();void openChat().catch(error=>{chatError=error.message;update();});});
+   }
+   shortcutRows.push({key:process.platform==='darwin'?'Option + L':'Alt + L',label:'Buka / tutup pertanyaan',available:hotkey});
+  }
  shortcutRows.push({key:'Enter',label:'Kirim pertanyaan (di chat)'},{key:'Esc',label:'Tutup chat / batalkan penunjuk'});
 }
 async function openChat(capturedContext?:WindowInfo){
@@ -133,18 +152,19 @@ async function openChat(capturedContext?:WindowInfo){
 }
 function syncRole(){
  globalShortcut.unregisterAll();shortcutHelper?.kill();shortcutHelper=undefined;hotkey=false;
- if(session?.role==='student'){
+ if(session?.role==='student'&&process.platform!=='darwin'){
   const child=spawn(nativePath(),['hotkey'],{windowsHide:true,stdio:['ignore','pipe','pipe']});shortcutHelper=child;
   createInterface({input:child.stdout!}).on('line',line=>{try{const row=JSON.parse(line.replace(/^\uFEFF/,''));if(row.kind==='ready'){hotkey=true;const row=shortcutRows.find(r=>r.key==='Alt + L');if(row)row.available=true;update();}if(row.kind==='hotkey'){hotkeyAt=Date.now();void openChat(row.context||undefined).catch(error=>{chatError=error.message;update();});}}catch{}});
   child.on('error',()=>{hotkey=false;update();});child.on('exit',()=>{if(shortcutHelper===child){hotkey=false;update();}});
  }
  toolbar.hide();chat.hide();buddy.hide();hideGuide();
- if(session?.role==='assistant'){panel.hide();toolbar.showInactive();}
+  if(session?.role==='assistant'&&process.platform==='darwin'){toolbar.hide();showPanel();}
+  else if(session?.role==='assistant'){panel.hide();toolbar.showInactive();}
  else if(session?.role==='student'){panel.hide();}
  else showPanel();
  setupShortcuts();
  tray.setToolTip(session?`Lighthouse Â· ${session.group.name}`:'Lighthouse');
- tray.setContextMenu(Menu.buildFromTemplate([{label:'Lighthouse',enabled:false},{label:'Group',click:showPanel},...(session?.role==='student'?[{label:'Tanya Lighthouse Â· Alt+L',click:()=>{void openChat();}}]:[]),{type:'separator'},{label:'Tutup Lighthouse',click:()=>{void quit();}}]));update();
+  tray.setContextMenu(Menu.buildFromTemplate([{label:'Lighthouse',enabled:false},{label:'Group',click:showPanel},...(session?.role==='student'?[{label:`Tanya Lighthouse Â· ${process.platform==='darwin'?'Option+L':'Alt+L'}`,click:()=>{void openChat();}}]:[]),{type:'separator'},{label:'Tutup Lighthouse',click:()=>{void quit();}}]));update();
 }
 async function quit(){if(recordingId){try{await stop();}catch{persistRecorder();}}quitting=true;app.quit();}
 async function guideStream(body:unknown,requestId:string){
@@ -172,9 +192,10 @@ async function observeOutcome(target:WindowInfo,command:any,interaction='target-
  await api('/v1/ack',{cmdId:command.cmdId,stepId:command.step.stepId,resolved:true,strategy:null,interaction,outcome});
 }
 function watchTarget(target:WindowInfo,locator:unknown,action:string,command:any){
- const child=spawn(nativePath(),['watch',target.handle,Buffer.from(JSON.stringify(locator)).toString('base64'),action,Buffer.from(JSON.stringify({...command.step.motion,direction:command.step.direction||'',button:command.step.button||'left',modifiers:command.step.modifiers||[],key:command.step.key||''})).toString('base64')],{windowsHide:true,stdio:['ignore','pipe','pipe']});guideWatcher=child;guideStatus='watching';
- createInterface({input:child.stdout!}).on('line',line=>{try{if(guideWatcher!==child)return;const event=JSON.parse(line.replace(/^\uFEFF/,''));if(event.kind==='target-position'){const b=event.bounds;if([b.x,b.y,b.width,b.height].every(Number.isFinite)&&b.width>0&&b.height>0){const r=screen.screenToDipRect(null,{x:Math.round(b.x),y:Math.round(b.y),width:Math.round(b.width),height:Math.round(b.height)});guidePoint={x:r.x+r.width/2-16,y:r.y+r.height/2-16};setGesture(r,command.step);}}else if(event.kind==='target-clicked'||event.kind==='gesture-completed'||event.kind==='target-lost'||event.kind==='error'){hideGuide();guideStatus=event.kind;if(event.kind==='target-clicked'||event.kind==='gesture-completed')void observeOutcome(target,command,event.kind).catch(()=>{});chat.webContents.send('chat:target',{status:event.kind==='target-clicked'?'clicked':event.kind==='gesture-completed'?'gesture':'lost'});}}catch{}});
- child.on('error',()=>{if(guideWatcher===child){hideGuide();guideStatus='watch-error';}});child.on('exit',(code)=>{if(guideWatcher===child){hideGuide();guideStatus='watch-exit-'+code;}});
+  const child=spawn(nativePath(),['watch',target.handle,Buffer.from(JSON.stringify(locator)).toString('base64'),action,Buffer.from(JSON.stringify({...command.step.motion,direction:command.step.direction||'',button:command.step.button||'left',modifiers:command.step.modifiers||[],key:command.step.key||''})).toString('base64')],{windowsHide:true,stdio:['ignore','pipe','pipe']});guideWatcher=child;guideStatus='watching';
+  createInterface({input:child.stdout!}).on('line',line=>{try{if(guideWatcher!==child)return;const event=JSON.parse(line.replace(/^\uFEFF/,''));if(event.kind==='target-position'){const b=event.bounds;if([b.x,b.y,b.width,b.height].every(Number.isFinite)&&b.width>0&&b.height>0){const r=bridgeRect(b);guidePoint={x:r.x+r.width/2-16,y:r.y+r.height/2-16};setGesture(r,command.step);}}else if(event.kind==='target-clicked'||event.kind==='gesture-completed'||event.kind==='target-lost'||event.kind==='error'){hideGuide();guideStatus=event.kind;if(event.kind==='target-clicked'||event.kind==='gesture-completed')void observeOutcome(target,command,event.kind).catch(()=>{});chat.webContents.send('chat:target',{status:event.kind==='target-clicked'?'clicked':event.kind==='gesture-completed'?'gesture':'lost'});}}catch{}});
+  createInterface({input:child.stderr!}).on('line',line=>{if(guideWatcher===child){chatError=line;update();}});
+  child.on('error',()=>{if(guideWatcher===child){hideGuide();guideStatus='watch-error';}});child.on('exit',(code)=>{if(guideWatcher===child){hideGuide();guideStatus='watch-exit-'+code;}});
 }
 async function guide(input:any){
  if(session?.role!=='student')throw new Error('Bergabung sebagai mahasiswa untuk bertanya.');
@@ -191,12 +212,12 @@ async function guide(input:any){
  const windows:WindowInfo[]=await native(['windows']);const matches=windows.filter(w=>w.process===command.step.window.process);
  const target=context?.process===command.step.window.process?context:matches.length===1?matches[0]:undefined;
  const resolution=target?await native(['resolve',target.handle,Buffer.from(JSON.stringify(command.step.target)).toString('base64')]):{resolved:false,reason:matches.length>1?'Ada beberapa jendela aplikasi. Buka jendela yang kamu pakai, lalu tekan Alt+L lagi.':`Buka ${command.step.window.process} dulu, lalu tekan Alt+L lagi.`};
- if(resolution.resolved){const b=resolution.bounds;if(![b.x,b.y,b.width,b.height].every(Number.isFinite)||b.width<=0||b.height<=0)throw new Error('Elemen belum bisa ditunjuk.');const r=screen.screenToDipRect(null,{x:Math.round(b.x),y:Math.round(b.y),width:Math.round(b.width),height:Math.round(b.height)});guidePoint={x:r.x+r.width/2-16,y:r.y+r.height/2-16};setGesture(r,command.step);watchTarget(target!,command.step.target,command.step.event,command);lastSeq=command.step.seq;lastRecording=command.step.recordingId;lastStepId=command.step.stepId;}
+  if(resolution.resolved){const b=resolution.bounds;if(![b.x,b.y,b.width,b.height].every(Number.isFinite)||b.width<=0||b.height<=0)throw new Error('Elemen belum bisa ditunjuk.');const r=bridgeRect(b);guidePoint={x:r.x+r.width/2-16,y:r.y+r.height/2-16};setGesture(r,command.step);watchTarget(target!,command.step.target,command.step.event,command);lastSeq=command.step.seq;lastRecording=command.step.recordingId;lastStepId=command.step.stepId;}
  await api('/v1/ack',{cmdId:command.cmdId,stepId:command.step.stepId,resolved:Boolean(resolution.resolved),strategy:resolution.strategy||null});
  return {message:command.explanation||command.say,instruction:command.say,resolved:Boolean(resolution.resolved),reason:resolution.reason||'',event:command.step.event,shortcut:[...(command.step.modifiers||[]),command.step.key||''].filter(Boolean).join(' + '),source:command.source,seq:command.step.seq,total:command.total};
 }
 app.whenReady().then(async()=>{
- storage=localCrypto(app.getPath('userData'),nativePath());
+  storage=localStorage();
  const deviceFile=path.join(app.getPath('userData'),'device-id');deviceId=existsSync(deviceFile)?readFileSync(deviceFile,'utf8').trim():randomUUID();writeFileSync(deviceFile,deviceId,'utf8');
  try{const p=path.join(app.getPath('userData'),'membership.enc');if(existsSync(p)&&safeStorage.isEncryptionAvailable())session=JSON.parse(decryptLocal(readFileSync(p)));}catch{}
  if(!safeStorage.isEncryptionAvailable())throw new Error('Encrypted local storage is unavailable');

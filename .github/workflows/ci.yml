@@ -97,7 +97,7 @@ jobs:
           if-no-files-found: error
 
   package-macos:
-    # Native macOS recorder and secure storage are not implemented yet.
+    # Experimental student bridge only; keep CI/release disabled until macOS recording and native E2E are covered.
     if: ${{ false }}
     needs: verify
     runs-on: macos-latest

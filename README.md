@@ -38,7 +38,7 @@ Choose **Impor dari file** to pick a recording from your laptop, or open an exis
 
 ![Recording detail](docs/screenshots/08-recording-detail.png)
 
-**Platforms:** Windows x64 uses the `.exe` installer. macOS packaging is disabled until native recording and encrypted storage are ported and tested. iOS/iPadOS requires a separate client; no iOS installer is available.
+**Platforms:** Windows x64 uses the `.exe` installer and supports assistant recording. An experimental macOS student build can be packaged as a `.dmg`; it uses macOS Accessibility and Keychain-backed storage. Grant Lighthouse **Accessibility** and **Input Monitoring** permissions when prompted. Assistant-side native recording is still Windows-only. Mac builds are signed with a local development identity but not notarized; distributing outside development requires a Developer ID Application certificate and notarization. iOS/iPadOS requires a separate client.
 
 ## Use it
 
@@ -48,7 +48,7 @@ Choose **Impor dari file** to pick a recording from your laptop, or open an exis
 4. **Student:** join with your name and the group code. Lighthouse stays beside your cursor.
 5. Press **Alt+L** to open a small purple input beside your mouse. It grows with the text; **Enter** sends and **Escape** closes. Answers stream into a compact card after you ask. Ask a question; Lighthouse uses the active application and the latest group recording to point at a matching control with the blue companion. You perform the action yourself.
 
-No MQTT, database, or AI credentials are needed in the installer. HTTPS connects to `lighthouse-be.yanzz.dev`; the backend owns group membership and AI access. Student questions and visible control names are sent to the service. Typed contents and password fields are not recorded. Membership and pending recordings are encrypted locally with a durable Windows DPAPI-protected profile key. Groups expire after seven days.
+No MQTT, database, or AI credentials are needed in the installer. HTTPS connects to `lighthouse-be.yanzz.dev`; the backend owns group membership and AI access. Student questions and visible control names are sent to the service. Typed contents and password fields are not recorded. Membership and pending data use Windows DPAPI or macOS Keychain-backed encryption. Groups expire after seven days.
 
 ## What works
 
@@ -59,18 +59,28 @@ No MQTT, database, or AI credentials are needed in the installer. HTTPS connects
 - Explicit failure for ambiguous or missing targets; the click-through companion never takes control of input.
 - Source and packaged two-client E2E tests against a real MongoDB test instance and a separate native Windows target.
 
-This is a Windows-first prototype. Custom-drawn controls, elevated apps, complex menus, and browser DOM locators are not covered. The app does not execute actions or infer overall task completion. After a target click it compares observed UI changes where evidence exists; otherwise the result is unverifiable. Pending recordings survive process restarts and resume paused. A pending Stop is retried after uploads finish. Installers are unsigned.
+This is a Windows-first prototype. The experimental macOS student client resolves native Mac accessibility controls; lesson steps must target the student's macOS apps and matching app bundle IDs. Custom-drawn controls, elevated apps, complex menus, and browser DOM locators are not covered. The app does not execute actions or infer overall task completion. After a target click it compares observed UI changes where evidence exists; otherwise the result is unverifiable. Pending recordings survive process restarts and resume paused. A pending Stop is retried after uploads finish. The Windows installer remains unsigned.
 
 ## Development
 
-Requires Windows x64, Node.js 22+, and the .NET Framework 4.x compiler/UI Automation assemblies included with supported Windows installations.
+Windows development requires Windows x64, Node.js 22+, and the .NET Framework 4.x compiler/UI Automation assemblies included with supported Windows installations. Experimental macOS builds require macOS, Node.js 22+, and Xcode/Swift command-line tools.
 
 ```powershell
 npm ci
 npm run dev
 ```
 
-The build compiles `native/Bridge.cs` into a helper shipped alongside Electron. The UI runs in a sandboxed renderer; API credentials and native process control stay in the main process.
+The Windows build compiles `native/Bridge.cs`; the macOS build compiles `native/macos/LighthouseBridge.swift`. The UI runs in a sandboxed renderer; API credentials and native process control stay in the main process.
+
+On a Mac, use:
+
+```bash
+npm ci
+npm run check
+npm run package:mac
+```
+
+The universal `.dmg` and `.zip` are written to `release/` for Intel and Apple Silicon Macs. They are signed with the available local identity but not notarized, so Gatekeeper may require **Open Anyway**. On first use, enable Lighthouse under System Settings → Privacy & Security → **Accessibility** and **Input Monitoring**. macOS assistant recording remains unsupported.
 
 Optional process configuration: `LIGHTHOUSE_BACKEND_URL` selects an HTTPS backend (localhost HTTP is allowed for development). `LIGHTHOUSE_PROFILE_DIR` gives a separate encrypted membership profile, useful for testing two clients on one machine.
 
