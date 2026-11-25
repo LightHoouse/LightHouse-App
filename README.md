@@ -24,11 +24,19 @@ Screenshots use the actual application renderer with fictional demo data. Assets
 
 ![Shortcuts](docs/screenshots/07-shortcuts.png)
 
-### Mouse helper
+### Chat beside the cursor
 
-<img src="docs/screenshots/mouse-helper.png" alt="Blue Lighthouse helper cursor" width="64">
+Demo conversation captured from the real chat renderer; the example answer is fixture data, not a live AI result.
 
-Captured from the actual helper renderer. The helper is hidden while chat is open.
+<img src="docs/screenshots/09-chat-question.png" alt="Typing a question beside the cursor" width="280">
+
+<img src="docs/screenshots/10-chat-answer.png" alt="Lighthouse answer beside the cursor" width="350">
+
+### Use a saved recording
+
+Choose **Impor dari file** to pick a recording from your laptop, or open an existing recording card to see its details. Select **Gunakan di kelas ini** to confirm adding it to the current class. Going back does not import anything. Deleting a local file does not remove recordings already added to a class.
+
+![Recording detail](docs/screenshots/08-recording-detail.png)
 
 **Platforms:** Windows x64 uses the `.exe` installer. macOS packaging is disabled until native recording and encrypted storage are ported and tested. iOS/iPadOS requires a separate client; no iOS installer is available.
 

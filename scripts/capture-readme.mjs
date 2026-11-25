@@ -30,6 +30,12 @@ await page.locator('#manage-nav').click();await page.locator('.member-row').wait
 await page.locator('.member-row').click();await page.locator('.question-item').click();await shot('04-question-detail.png');
 await page.locator('#settings-header').click();await page.locator('#cursor-shapes button').first().waitFor();await shot('05-settings-cursor.png');
 await page.locator('#settings-back').click();await page.locator('#recordings-nav').click();await page.locator('.recording-card').waitFor();await shot('06-recordings.png');
+await page.evaluate(()=>{window.lighthouse.previewRecording=async()=>showImport();window.lighthouse.chooseImport=async()=>showImport();});
+if(await page.locator('.recording-card').getByText('Impor',{exact:true}).count())throw Error('Import action must not be on a recording card');
+await page.locator('.recording-open').click();await page.locator('#confirm-import').waitFor();await shot('08-recording-detail.png');
+await page.locator('#import-back').click();await page.locator('#recordings-import').waitFor();
+await page.locator('#recordings-import').click();await page.locator('#import-page').waitFor();
+await page.locator('#import-back').click();await page.locator('#recordings-page').waitFor();
 await page.locator('#shortcuts-nav').click();await page.locator('.shortcut-row').first().waitFor();await shot('07-shortcuts.png');
 await page.locator('.window-tools').screenshot({path:path.join(output,'window-controls.png')});
 const helper=await browser.newPage({viewport:{width:32,height:32},deviceScaleFactor:2});
@@ -37,4 +43,20 @@ await helper.addInitScript(()=>{window.lighthouse={cursor:async()=>({shape:'arro
 await helper.goto(pathToFileURL(path.join(root,'src/ui/buddy.html')).href);
 await helper.locator('#cursor-shape').waitFor();
 await helper.screenshot({path:path.join(output,'mouse-helper.png'),omitBackground:true});
+const chat=await browser.newPage({viewport:{width:360,height:330},deviceScaleFactor:2});
+await chat.addInitScript(()=>{
+ let delta;
+ window.lighthouse={expandChat:async()=>{},hideChat:async()=>{},onDelta:fn=>delta=fn,onChatOpen:fn=>window.openDemoChat=fn,onTarget:()=>{},onPlacement:()=>{},guide:async({requestId})=>{
+  const answer='Di rekaman, asisten menekan Ctrl + S. Isi ketikannya tidak disimpan, jadi nama atau isi file belum diketahui.';
+  for(const text of answer.match(/.{1,18}/g)){delta({requestId,text});await new Promise(r=>setTimeout(r,25));}
+  return {message:answer,resolved:false,source:'demo'};
+ }};
+});
+await chat.goto(pathToFileURL(path.join(root,'src/ui/chat.html')).href);
+await chat.evaluate(async()=>{await document.fonts.ready;openDemoChat({context:'Contoh percakapan'});});
+await chat.locator('#question').fill('Tadi simpan apa?');
+await chat.locator('.ask-pill').screenshot({path:path.join(output,'09-chat-question.png'),omitBackground:true});
+await chat.locator('#question').press('Enter');
+await chat.locator('.message.assistant[data-streaming="false"]').waitFor();
+await chat.locator('.cursor-chat').screenshot({path:path.join(output,'10-chat-answer.png'),omitBackground:true});
 } finally {await browser.close();}
