@@ -1,14 +1,14 @@
 <p align="center"><img src="src/ui/logo.png" alt="Lighthouse - guide cursor for computer labs" width="600"></p>
 
-# Lighthouse Desktop ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â¦
+# Lighthouse Desktop
 
 A small lab companion that turns an assistant's demonstration into guidance on a student's own screen.
 
-[Download the latest release](https://github.com/LightHoouse/LightHouse-App/releases/latest) Ãƒâ€šÃ‚Â· [Backend](https://github.com/LightHoouse/LightHosue-Backend) Ãƒâ€šÃ‚Â· [AI service](https://github.com/LightHoouse/LightHouse-AI)
+[Download the latest release](https://github.com/LightHoouse/LightHouse-App/releases/latest) · [Backend](https://github.com/LightHoouse/LightHosue-Backend) · [AI service](https://github.com/LightHoouse/LightHouse-AI)
 
 ## See it in action
 
-The main flows are captured below so the product surface is visible without installing the app.
+Screenshots use the actual application renderer with fictional demo data. Assets and fonts are checked before capture.
 
 | Welcome | Create a group |
 | --- | --- |
@@ -23,6 +23,12 @@ The main flows are captured below so the product surface is visible without inst
 | ![Cursor settings](docs/screenshots/05-settings-cursor.png) | ![Recording library](docs/screenshots/06-recordings.png) |
 
 ![Shortcuts](docs/screenshots/07-shortcuts.png)
+
+### Mouse helper
+
+<img src="docs/screenshots/mouse-helper.png" alt="Blue Lighthouse helper cursor" width="64">
+
+Captured from the actual helper renderer. The helper is hidden while chat is open.
 
 **Platforms:** Windows x64 uses the `.exe` installer. macOS packaging is disabled until native recording and encrypted storage are ported and tested. iOS/iPadOS requires a separate client; no iOS installer is available.
 
