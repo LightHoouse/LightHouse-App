@@ -219,7 +219,7 @@ app.whenReady().then(async()=>{
  toolbar=new BrowserWindow({...shared,width:400,height:76,resizable:false,transparent:true,alwaysOnTop:true,skipTaskbar:true});
  chat=new BrowserWindow({...shared,width:380,height:430,resizable:false,transparent:true,alwaysOnTop:true,skipTaskbar:true});
  marker=new BrowserWindow({...shared,width:100,height:50,transparent:true,alwaysOnTop:true,focusable:false,skipTaskbar:true,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false}});marker.setIgnoreMouseEvents(true);
- buddy=new BrowserWindow({...shared,width:32,height:32,transparent:true,alwaysOnTop:true,focusable:false,skipTaskbar:true});buddy.setIgnoreMouseEvents(true);buddy.setAlwaysOnTop(true,'screen-saver');
+ buddy=new BrowserWindow({...shared,width:44,height:44,transparent:true,alwaysOnTop:true,focusable:false,skipTaskbar:true});buddy.setIgnoreMouseEvents(true);buddy.setAlwaysOnTop(true,'screen-saver');
  [panel,toolbar,chat,marker,buddy].forEach(secure);
  for(const w of [panel,toolbar,chat])w.on('close',e=>{if(!quitting){e.preventDefault();w.hide();}});
  const handle=(name:string,allowed:()=>BrowserWindow[],fn:(input:any)=>unknown)=>ipcMain.handle(name,async(e,input)=>{if(!allowed().some(w=>w.webContents===e.sender)||e.senderFrame!==e.sender.mainFrame)throw new Error('Invalid sender');return fn(input);});
@@ -259,11 +259,11 @@ app.whenReady().then(async()=>{
   const phase=gesturePath?Math.min(1,((performance.now()-gesturePath.started)%2200)/1500):0;
   const points=gesturePath?.points|| (gesturePath?[gesturePath.start,gesturePath.end]:[]);const index=Math.min(Math.max(0,points.length-2),Math.floor(phase*Math.max(1,points.length-1)));const fraction=phase*Math.max(1,points.length-1)-index;
   const point=points.length>1?{x:points[index].x+(points[index+1].x-points[index].x)*fraction,y:points[index].y+(points[index+1].y-points[index].y)*fraction}:guidePoint||{x:p.x+19,y:p.y+9};
-  const target={x:Math.max(a.x,Math.min(point.x,a.x+a.width-32)),y:Math.max(a.y,Math.min(point.y,a.y+a.height-32))};
+  const target={x:Math.max(a.x,Math.min(point.x,a.x+a.width-44)),y:Math.max(a.y,Math.min(point.y,a.y+a.height-44))};
   if(!buddyPosition)buddyPosition={x:p.x+19,y:p.y+9};
   if(!guidePoint&&Math.hypot(target.x-buddyPosition.x,target.y-buddyPosition.y)>600)buddyPosition=target;
   else{buddyPosition.x+=(target.x-buddyPosition.x)*.22;buddyPosition.y+=(target.y-buddyPosition.y)*.22;}
-  buddy.setPosition(Math.round(buddyPosition.x),Math.round(buddyPosition.y));buddy.showInactive();
+  buddy.setBounds({x:Math.round(buddyPosition.x),y:Math.round(buddyPosition.y),width:44,height:44});if(!buddy.isVisible())buddy.showInactive();
  },16).unref();
 });
 app.on('window-all-closed',()=>{});
