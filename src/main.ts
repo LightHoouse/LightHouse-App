@@ -129,7 +129,7 @@ async function openChat(capturedContext?:WindowInfo){
  // is hidden for this interaction so it cannot sit over the composer or reply.
  buddy.hide();
  chat.setAlwaysOnTop(true,'screen-saver');
- chat.webContents.send('chat:open',{context:studentContext?.process||'Desktop'});chat.show();chat.focus();chat.webContents.focus();chat.webContents.send('chat:open',{context:studentContext?.process||'Desktop'});update();
+ chat.webContents.send('chat:open',{context:studentContext?.process||'Desktop'});app.focus({steal:true});chat.show();chat.moveTop();chat.focus();chat.webContents.focus();chat.webContents.send('chat:open',{context:studentContext?.process||'Desktop'});setTimeout(()=>{if(chat&&!chat.isDestroyed()&&chat.isVisible()){app.focus({steal:true});chat.focus();chat.webContents.focus();}},60);update();
 }
 function syncRole(){
  globalShortcut.unregisterAll();shortcutHelper?.kill();shortcutHelper=undefined;hotkey=false;
@@ -244,7 +244,8 @@ app.whenReady().then(async()=>{
   if(session?.role!=='student'||panel.isFocused()){buddy.hide();buddyPosition=undefined;return;}
   const p=screen.getCursorScreenPoint();
   if(chat.isVisible()){
-   if(p.x!==chatAnchor.x||p.y!==chatAnchor.y){chatAnchor=p;sizeChat(chatSize.expanded,chatSize.width,chatSize.height);}
+   const cb=chat.getBounds();const insideChat=p.x>=cb.x&&p.x<=cb.x+cb.width&&p.y>=cb.y&&p.y<=cb.y+cb.height;
+   if(!insideChat&&(p.x!==chatAnchor.x||p.y!==chatAnchor.y)){chatAnchor=p;sizeChat(chatSize.expanded,chatSize.width,chatSize.height);}
    if(!guidePoint){buddy.hide();buddyPosition=undefined;return;}
   }
   const a=screen.getDisplayNearestPoint(guidePoint||p).workArea;

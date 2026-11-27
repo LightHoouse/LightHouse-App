@@ -57,7 +57,8 @@ $('question').addEventListener('input',()=>{void fit();});
 $('ask-form').onsubmit=event=>{event.preventDefault();void ask();};
 $('question').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();void ask();}};
 document.addEventListener('keydown',event=>{if(event.key==='Escape')void api.hideChat();});
-api.onChatOpen(state=>{document.body.classList.add('compact');$('context').textContent=state.context;void fit();$('question').focus();});
+api.onChatOpen(state=>{document.body.classList.add('compact');$('context').textContent=state.context;void fit();$('question').focus();setTimeout(()=>$('question').focus(),60);});
+window.addEventListener('focus',()=>{$('question').focus();});
 document.fonts.ready.then(fit);
 
 api.onTarget(event=>{const label=[...document.querySelectorAll('.target-found')].at(-1);if(label)label.textContent=event.status==='clicked'?'Target sudah diklik':event.status==='gesture'?'Gerakan sudah teramati':'Target berubah. Tanya lagi untuk menunjuk ulang.';});
