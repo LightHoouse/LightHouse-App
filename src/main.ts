@@ -105,8 +105,9 @@ async function management(){
  try{const [group,activity]=await Promise.all([api('/v1/group'),api('/v1/activity')]);const data={members:group.members,questions:activity.questions,savedAt:Date.now(),offline:false};writeFileSync(file,storage.encrypt(JSON.stringify(data)));return data;}
  catch(error){if(existsSync(file))return {...JSON.parse(decryptLocal(readFileSync(file))),offline:true};throw error;}
 }
+function keyLabel(key:string){return (process.platform==='darwin'?key.replaceAll('Alt','Option'):key).replaceAll('+',' + ');}
 function setupShortcuts(){
- shortcutRows=[];const register=(key:string,label:string,fn:()=>void)=>{const available=globalShortcut.register(key,fn);shortcutRows.push({key:key.replaceAll('+',' + '),label,available});};
+ shortcutRows=[];const register=(key:string,label:string,fn:()=>void)=>{const available=globalShortcut.register(key,fn);shortcutRows.push({key:keyLabel(key),label,available});};
  register('Alt+G','Buka group / kelola kelas',showPanel);
  register('Alt+H','Sembunyikan panel dan bantuan',()=>{panel.hide();hideChat();});
  register('Alt+Shift+K','Lihat shortcut',()=>{showPanel();panel.webContents.send('lab:shortcuts');});
@@ -115,7 +116,7 @@ function setupShortcuts(){
   register('Alt+Shift+S','Stop dan simpan rekaman',()=>{void stop().then(showManagement).catch(e=>{recordError=e.message;update();});});
   register('Alt+Shift+O','Buka folder rekaman',()=>{void shell.openPath(recordingsDirectory());});
  }
- if(session?.role==='student')shortcutRows.push({key:'Alt + L',label:'Buka / tutup pertanyaan',available:hotkey});
+ if(session?.role==='student'){shortcutRows.push({key:keyLabel('Alt+L'),label:'Buka / tutup pertanyaan',available:hotkey},{key:keyLabel('Alt+↑ / ↓'),label:'Gulir riwayat sesi chat',available:true});}
  shortcutRows.push({key:'Enter',label:'Kirim pertanyaan (di chat)'},{key:'Esc',label:'Tutup chat / batalkan penunjuk'});
 }
 function forceFocusChat(){if(!chat||chat.isDestroyed()||!chat.isVisible())return;try{const buf=chat.getNativeWindowHandle();const hwnd=buf.length>=8?buf.readBigInt64LE(0).toString():String(buf.readInt32LE(0));execFileSync(nativePath(),['focus-window',hwnd],{windowsHide:true,timeout:1500});}catch{}chat.focus();chat.webContents.focus();}
@@ -137,7 +138,7 @@ function syncRole(){
  if(session?.role==='student'){
   if(globalShortcut.register('Alt+L',()=>{hotkeyAt=Date.now();void openChat().catch(error=>{chatError=error.message;update();});})){hotkey=true;}else{
   const child=spawn(nativePath(),['hotkey'],{windowsHide:true,stdio:['ignore','pipe','pipe']});shortcutHelper=child;
-  createInterface({input:child.stdout!}).on('line',line=>{try{const row=JSON.parse(line.replace(/^\uFEFF/,''));if(row.kind==='ready'){hotkey=true;const row=shortcutRows.find(r=>r.key==='Alt + L');if(row)row.available=true;update();}if(row.kind==='hotkey'){hotkeyAt=Date.now();void openChat(row.context||undefined).catch(error=>{chatError=error.message;update();});}}catch{}});
+  createInterface({input:child.stdout!}).on('line',line=>{try{const row=JSON.parse(line.replace(/^\uFEFF/,''));if(row.kind==='ready'){hotkey=true;const row=shortcutRows.find(r=>r.key===keyLabel('Alt+L'));if(row)row.available=true;update();}if(row.kind==='hotkey'){hotkeyAt=Date.now();void openChat(row.context||undefined).catch(error=>{chatError=error.message;update();});}}catch{}});
   child.on('error',()=>{hotkey=false;update();});child.on('exit',()=>{if(shortcutHelper===child){hotkey=false;update();}});
   }
  }
@@ -147,7 +148,7 @@ function syncRole(){
  else showPanel();
  setupShortcuts();
  tray.setToolTip(session?`Lighthouse Â· ${session.group.name}`:'Lighthouse');
- tray.setContextMenu(Menu.buildFromTemplate([{label:'Lighthouse',enabled:false},{label:'Group',click:showPanel},...(session?.role==='student'?[{label:'Tanya Lighthouse Â· Alt+L',click:()=>{void openChat();}}]:[]),{type:'separator'},{label:'Tutup Lighthouse',click:()=>{void quit();}}]));update();
+ tray.setContextMenu(Menu.buildFromTemplate([{label:'Lighthouse',enabled:false},{label:'Group',click:showPanel},...(session?.role==='student'?[{label:`Tanya Lighthouse Â· ${process.platform==='darwin'?'Option+L':'Alt+L'}`,click:()=>{void openChat();}}]:[]),{type:'separator'},{label:'Tutup Lighthouse',click:()=>{void quit();}}]));update();
 }
 async function quit(){if(recordingId){try{await stop();}catch{persistRecorder();}}quitting=true;app.quit();}
 async function guideStream(body:unknown,requestId:string){

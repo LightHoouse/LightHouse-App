@@ -56,8 +56,19 @@ api.onDelta(event => {
 $('question').addEventListener('input',()=>{void fit();});
 $('ask-form').onsubmit=event=>{event.preventDefault();void ask();};
 $('question').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();void ask();}};
-document.addEventListener('keydown',event=>{if(event.key==='Escape')void api.hideChat();});
-api.onChatOpen(state=>{document.body.classList.add('compact');$('context').textContent=state.context;void fit();$('question').focus();setTimeout(()=>$('question').focus(),60);});
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape')void api.hideChat();
+  else if(event.altKey&&(event.key==='ArrowUp'||event.key==='ArrowDown')){
+    event.preventDefault();
+    const box=$('messages');
+    if(box&&box.children.length){
+      document.body.classList.remove('compact');
+      void fit();
+      box.scrollBy({top:event.key==='ArrowUp'?-140:140,behavior:'smooth'});
+    }
+  }
+});
+api.onChatOpen(state=>{document.body.classList.toggle('compact',$('messages').children.length===0);$('context').textContent=state.context;void fit();$('question').focus();setTimeout(()=>$('question').focus(),60);});
 window.addEventListener('focus',()=>{$('question').focus();});
 document.fonts.ready.then(fit);
 
