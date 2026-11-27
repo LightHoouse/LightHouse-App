@@ -1,7 +1,8 @@
 const $ = id => document.getElementById(id);
 const api = window.lighthouse;
 const measure = document.createElement('canvas').getContext('2d');
-let busy = false, activeRequest;
+let busy = false, activeRequest, autoNextTimer;
+function clearAutoNext(){if(autoNextTimer){clearTimeout(autoNextTimer);autoNextTimer=undefined;}}
 const plain = text => String(text || '').replace(/\*\*([^*]+)\*\*/g, '$1');
 function fit() {
   measure.font = getComputedStyle($('question')).font;
@@ -17,7 +18,29 @@ function message(text, kind) {
 function targetHint(result) {
   return result.event === 'dragDrop' ? 'Tekan, tahan, lalu tarik mengikuti kursor biru' : result.event === 'keypress' ? 'Tekan ' + result.shortcut : result.event === 'scroll' ? (result.shortcut ? result.shortcut + ' + scroll mengikuti kursor biru' : 'Scroll mengikuti arah kursor biru') : 'Klik target yang ditunjuk kursor biru';
 }
+async function advanceStep() {
+  clearAutoNext();
+  if (busy) return;
+  busy = true; $('send').disabled = true;
+  try {
+    const guided = await api.guide({next: true});
+    if (guided && guided.done) {
+      message('Selesai! Semua langkah dari asisten sudah diikuti.', 'assistant');
+    } else if (guided && guided.resolved) {
+      const row = message(guided.instruction || guided.message || 'Ikuti kursor biru untuk langkah berikutnya.', 'assistant');
+      const label = document.createElement('span'); label.className = 'target-found'; label.textContent = targetHint(guided); row.append(label);
+    } else if (guided && guided.reason) {
+      const row = message(guided.instruction || guided.message || 'Lanjutkan langkah berikutnya.', 'assistant');
+      const note = document.createElement('div'); note.className = 'response-note'; note.textContent = guided.reason; row.append(note);
+    }
+  } catch {}
+  finally {
+    busy = false; $('send').disabled = false;
+    void fit();
+  }
+}
 async function ask() {
+  clearAutoNext();
   const question = $('question').value.trim(); if (busy || !question) return;
   busy = true; $('send').disabled = true; document.body.classList.remove('compact');
   message(question, 'user'); $('question').value = '';
@@ -57,7 +80,7 @@ $('question').addEventListener('input',()=>{void fit();});
 $('ask-form').onsubmit=event=>{event.preventDefault();void ask();};
 $('question').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();void ask();}};
 document.addEventListener('keydown',event=>{
-  if(event.key==='Escape')void api.hideChat();
+  if(event.key==='Escape'){clearAutoNext();void api.hideChat();}
   else if(event.altKey&&(event.key==='ArrowUp'||event.key==='ArrowDown')){
     event.preventDefault();
     const box=$('messages');
@@ -72,6 +95,6 @@ api.onChatOpen(state=>{document.body.classList.toggle('compact',$('messages').ch
 window.addEventListener('focus',()=>{$('question').focus();});
 document.fonts.ready.then(fit);
 
-api.onTarget(event=>{const label=[...document.querySelectorAll('.target-found')].at(-1);if(label)label.textContent=event.status==='clicked'?'Target sudah diklik':event.status==='gesture'?'Gerakan sudah teramati':'Target berubah. Tanya lagi untuk menunjuk ulang.';});
+api.onTarget(event=>{const label=[...document.querySelectorAll('.target-found')].at(-1);if(label)label.textContent=event.status==='clicked'?'Target sudah diklik':event.status==='gesture'?'Gerakan sudah teramati':'Target berubah. Tanya lagi untuk menunjuk ulang.';if(event.status==='clicked'||event.status==='gesture'){clearAutoNext();autoNextTimer=setTimeout(()=>{void advanceStep();},900);}});
 
 api.onPlacement(position=>{document.body.classList.toggle('above',position.above);document.body.classList.toggle('left',position.left);});
