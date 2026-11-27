@@ -67,8 +67,8 @@ function freezeRecording(){recordElapsedMs=elapsedRecording();recording=false;}
 function state(){return {version:app.getVersion(),update:updateInfo,lastExport,importPreview,session:session?{role:session.role,group:session.group}:null,recording,recordingId,captured,uploaded,pending:queue.length,recordError,recordElapsedMs:elapsedRecording(),hotkey,lastEvent,lastAction,hotkeyAt,chatError,guideStatus,guidePoint:guidePoint||null};}
 async function checkForUpdate(){const current=app.getVersion();try{const response=await fetch('https://api.github.com/repos/LightHoouse/LightHouse-App/releases/latest',{headers:{accept:'application/vnd.github+json','user-agent':'Lighthouse-App'},signal:AbortSignal.timeout(8000)});if(!response.ok)throw new Error('release lookup failed');const release=await response.json() as any;const latest=typeof release.tag_name==='string'?release.tag_name.replace(/^v/,''):null;updateInfo={current,latest,url:typeof release.html_url==='string'?release.html_url:null,available:Boolean(latest&&/^\d+\.\d+\.\d+$/.test(latest)&&latest.split('.').reduce((r:number,n:string,i:number)=>r||Math.sign(Number(n)-Number(current.split('-')[0].split('.')[i])),0)>0),checkedAt:Date.now()};}catch{updateInfo={current,latest:null,url:null,available:false,checkedAt:Date.now(),error:'Gagal memeriksa update. Coba lagi.'};}update();return updateInfo;}
 function update(){for(const w of [panel,toolbar,chat])if(w&&!w.isDestroyed())w.webContents.send('lab:state',state());}
-function hideGuide(){gesturePath=undefined;guideStatus='dismissed';guidePoint=undefined;const observer=guideWatcher;guideWatcher=undefined;observer?.kill();marker.hide();if(markerTimer)clearTimeout(markerTimer);}
-function hideChat(){guideVersion++;chat.hide();hideGuide();if(session?.role==='student'&&!panel.isVisible())buddy.showInactive();}
+function hideGuide(){gesturePath=undefined;guideStatus='dismissed';guidePoint=undefined;const observer=guideWatcher;guideWatcher=undefined;observer?.kill();if(marker&&!marker.isDestroyed())marker.hide();if(markerTimer)clearTimeout(markerTimer);}
+function hideChat(){guideVersion++;if(chat&&!chat.isDestroyed())chat.hide();hideGuide();if(!quitting&&session?.role==='student'&&panel&&!panel.isDestroyed()&&!panel.isVisible()&&buddy&&!buddy.isDestroyed())buddy.showInactive();}
 function showManagement(){showPanel();panel.webContents.send('lab:management-open');}
 function showPanel(){panel.show();panel.focus();panel.webContents.send('lab:panel-open');update();}
 async function flush(){if(upload)return upload;upload=(async()=>{while(queue.length){await api(`/v1/recordings/${recordingId}/steps`,queue[0]);const sent=queue.shift() as any;if(!sent?.enrichment)uploaded++;recordError='';persistRecorder();update();}})();try{await upload;}catch(e){recordError='Menghubungkan ulang?';update();throw e;}finally{upload=undefined;}}
@@ -237,6 +237,7 @@ app.whenReady().then(async()=>{
  setInterval(()=>{if(session?.role==='assistant')void management().catch(()=>{});},30000).unref();
  setInterval(()=>{if(recordingId&&!upload){persistRecorder();if(stopRequested)void stop().catch(()=>{});else if(queue.length)void flush().catch(()=>{});}},5000).unref();
  setInterval(()=>{
+  if(quitting||!panel||panel.isDestroyed()||!chat||chat.isDestroyed()||!buddy||buddy.isDestroyed())return;
   if(session?.role!=='student'||panel.isVisible()){buddy.hide();buddyPosition=undefined;return;}
   const p=screen.getCursorScreenPoint();
   if(chat.isVisible()){
