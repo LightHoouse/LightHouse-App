@@ -232,10 +232,14 @@ class Bridge {
       strategy=best!=null?"document-viewport":null;
       return best;
     }
-    var ids=new List<AutomationElement>();var names=new List<AutomationElement>();
+    var ids=new List<AutomationElement>();var names=new List<AutomationElement>();var anyTypeNames=new List<AutomationElement>();
+    AutomationElement bestDoc=null;double bestDocArea=0;
     foreach(AutomationElement e in all) {
       try {
-        var c=e.Current;if(c.IsOffscreen || c.IsPassword || c.ControlType.ProgrammaticName!="ControlType."+t["controlType"])continue;
+        var c=e.Current;if(c.IsOffscreen || c.IsPassword)continue;
+        if(c.ControlType==ControlType.Document){var db=c.BoundingRectangle;double da=db.Width*db.Height;if(db.Width>0&&db.Height>0&&da>bestDocArea){bestDoc=e;bestDocArea=da;}}
+        if(t["name"]!="" && c.Name==t["name"])anyTypeNames.Add(e);
+        if(c.ControlType.ProgrammaticName!="ControlType."+t["controlType"])continue;
         if(t["automationId"]!="" && c.AutomationId==t["automationId"])ids.Add(e);
         if(t["name"]!="" && c.Name==t["name"])names.Add(e);
       } catch {}
@@ -243,6 +247,8 @@ class Bridge {
     AutomationElement found=null;strategy=null;
     if(ids.Count==1){found=ids[0];strategy="automationId";}
     else if(ids.Count==0 && names.Count==1){found=names[0];strategy="role-name";}
+    else if(ids.Count==0 && names.Count==0 && anyTypeNames.Count==1){found=anyTypeNames[0];strategy="name-fallback";}
+    else if(ids.Count==0 && bestDoc!=null && (t["controlType"]=="Group" || t["controlType"]=="WebArea" || t["controlType"]=="Document")){found=bestDoc;strategy="document-viewport";}
     return found;
   }
   static Dictionary<string,string> DecodeTarget(string data){return Json.Deserialize<Dictionary<string,string>>(Encoding.UTF8.GetString(Convert.FromBase64String(data)));}
