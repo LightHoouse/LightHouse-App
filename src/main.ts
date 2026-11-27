@@ -118,6 +118,7 @@ function setupShortcuts(){
  if(session?.role==='student')shortcutRows.push({key:'Alt + L',label:'Buka / tutup pertanyaan',available:hotkey});
  shortcutRows.push({key:'Enter',label:'Kirim pertanyaan (di chat)'},{key:'Esc',label:'Tutup chat / batalkan penunjuk'});
 }
+function forceFocusChat(){if(!chat||chat.isDestroyed()||!chat.isVisible())return;try{const buf=chat.getNativeWindowHandle();const hwnd=buf.length>=8?buf.readBigInt64LE(0).toString():String(buf.readInt32LE(0));execFileSync(nativePath(),['focus-window',hwnd],{windowsHide:true,timeout:1500});}catch{}chat.focus();chat.webContents.focus();}
 async function openChat(capturedContext?:WindowInfo){
  if(!session){showPanel();return;}if(session.role!=='student'){showPanel();return;}if(chat.isVisible()){hideChat();return;}
  const pointer=screen.getCursorScreenPoint();
@@ -129,14 +130,16 @@ async function openChat(capturedContext?:WindowInfo){
  // is hidden for this interaction so it cannot sit over the composer or reply.
  buddy.hide();
  chat.setAlwaysOnTop(true,'screen-saver');
- chat.webContents.send('chat:open',{context:studentContext?.process||'Desktop'});app.focus({steal:true});chat.show();chat.moveTop();chat.focus();chat.webContents.focus();chat.webContents.send('chat:open',{context:studentContext?.process||'Desktop'});setTimeout(()=>{if(chat&&!chat.isDestroyed()&&chat.isVisible()){app.focus({steal:true});chat.focus();chat.webContents.focus();}},60);update();
+ chat.webContents.send('chat:open',{context:studentContext?.process||'Desktop'});chat.show();forceFocusChat();chat.webContents.send('chat:open',{context:studentContext?.process||'Desktop'});setTimeout(()=>{forceFocusChat();},80);update();
 }
 function syncRole(){
  globalShortcut.unregisterAll();shortcutHelper?.kill();shortcutHelper=undefined;hotkey=false;
  if(session?.role==='student'){
+  if(globalShortcut.register('Alt+L',()=>{hotkeyAt=Date.now();void openChat().catch(error=>{chatError=error.message;update();});})){hotkey=true;}else{
   const child=spawn(nativePath(),['hotkey'],{windowsHide:true,stdio:['ignore','pipe','pipe']});shortcutHelper=child;
   createInterface({input:child.stdout!}).on('line',line=>{try{const row=JSON.parse(line.replace(/^\uFEFF/,''));if(row.kind==='ready'){hotkey=true;const row=shortcutRows.find(r=>r.key==='Alt + L');if(row)row.available=true;update();}if(row.kind==='hotkey'){hotkeyAt=Date.now();void openChat(row.context||undefined).catch(error=>{chatError=error.message;update();});}}catch{}});
   child.on('error',()=>{hotkey=false;update();});child.on('exit',()=>{if(shortcutHelper===child){hotkey=false;update();}});
+  }
  }
  toolbar.hide();chat.hide();buddy.hide();hideGuide();
  if(session?.role==='assistant'){panel.hide();toolbar.showInactive();}

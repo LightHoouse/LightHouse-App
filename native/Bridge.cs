@@ -27,6 +27,11 @@ class Bridge {
   [DllImport("user32.dll")] static extern int GetWindowText(IntPtr h,StringBuilder s,int n);
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h,out uint p);
   [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
+  [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h,int nCmdShow);
+  [DllImport("user32.dll")] static extern bool AttachThreadInput(uint idAttach,uint idAttachTo,bool fAttach);
+  [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
   [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point point);
   [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h,uint flags);
   [DllImport("user32.dll")] static extern short GetAsyncKeyState(int key);
@@ -314,6 +319,23 @@ class Bridge {
       }
       if(args[0]=="hotkey") {Hook=SetWindowsHookEx(13,KeyCallback,GetModuleHandle(null),0);if(Hook==IntPtr.Zero)throw new Exception("Hotkey unavailable");Write(new {kind="ready"});Application.Run();UnhookWindowsHookEx(Hook);UnhookWindowsHookEx(KeyboardHook);return;}
       if(args[0]=="foreground") {var h=GetForegroundWindow();Write(Allowed(h)?new {handle=h.ToInt64().ToString(),title=Title(h),process=ProcessName(h)}:null);return;}
+      if(args[0]=="focus-window" && args.Length>1) {
+        var targetHwnd=new IntPtr(long.Parse(args[1]));
+        var fg=GetForegroundWindow();
+        uint unused;
+        uint fgTid=fg!=IntPtr.Zero?GetWindowThreadProcessId(fg,out unused):0;
+        uint curTid=GetCurrentThreadId();
+        uint tgtTid=GetWindowThreadProcessId(targetHwnd,out unused);
+        if(fgTid!=0 && fgTid!=curTid)AttachThreadInput(curTid,fgTid,true);
+        if(tgtTid!=0 && tgtTid!=curTid)AttachThreadInput(curTid,tgtTid,true);
+        ShowWindow(targetHwnd,5);
+        BringWindowToTop(targetHwnd);
+        bool ok=SetForegroundWindow(targetHwnd);
+        if(tgtTid!=0 && tgtTid!=curTid)AttachThreadInput(curTid,tgtTid,false);
+        if(fgTid!=0 && fgTid!=curTid)AttachThreadInput(curTid,fgTid,false);
+        Write(new {focused=ok,foreground=GetForegroundWindow().ToInt64().ToString()});
+        return;
+      }
       if(args[0]=="record-all") {RecordAll=true;Record();return;}
       if(args[0]=="windows") {
         var rows=new List<object>();
