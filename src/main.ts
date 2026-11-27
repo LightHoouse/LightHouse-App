@@ -248,8 +248,7 @@ app.whenReady().then(async()=>{
   if(session?.role!=='student'||panel.isFocused()){buddy.hide();buddyPosition=undefined;return;}
   const p=screen.getCursorScreenPoint();
   if(chat.isVisible()){
-   const cb=chat.getBounds();const insideChat=p.x>=cb.x&&p.x<=cb.x+cb.width&&p.y>=cb.y&&p.y<=cb.y+cb.height;
-   if(!insideChat&&(p.x!==chatAnchor.x||p.y!==chatAnchor.y)){chatAnchor=p;sizeChat(chatSize.expanded,chatSize.width,chatSize.height);}
+   if(p.x!==chatAnchor.x||p.y!==chatAnchor.y){chatAnchor=p;sizeChat(chatSize.expanded,chatSize.width,chatSize.height);}
    if(!guidePoint){buddy.hide();buddyPosition=undefined;return;}
   }
   const a=screen.getDisplayNearestPoint(guidePoint||p).workArea;
