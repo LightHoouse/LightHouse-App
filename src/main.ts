@@ -238,7 +238,7 @@ app.whenReady().then(async()=>{
  setInterval(()=>{if(recordingId&&!upload){persistRecorder();if(stopRequested)void stop().catch(()=>{});else if(queue.length)void flush().catch(()=>{});}},5000).unref();
  setInterval(()=>{
   if(quitting||!panel||panel.isDestroyed()||!chat||chat.isDestroyed()||!buddy||buddy.isDestroyed())return;
-  if(session?.role!=='student'||panel.isVisible()){buddy.hide();buddyPosition=undefined;return;}
+  if(session?.role!=='student'||panel.isFocused()){buddy.hide();buddyPosition=undefined;return;}
   const p=screen.getCursorScreenPoint();
   if(chat.isVisible()){
    if(p.x!==chatAnchor.x||p.y!==chatAnchor.y){chatAnchor=p;sizeChat(chatSize.expanded,chatSize.width,chatSize.height);}
