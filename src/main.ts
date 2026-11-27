@@ -241,7 +241,7 @@ app.whenReady().then(async()=>{
   const p=screen.getCursorScreenPoint();
   if(chat.isVisible()){
    if(p.x!==chatAnchor.x||p.y!==chatAnchor.y){chatAnchor=p;sizeChat(chatSize.expanded,chatSize.width,chatSize.height);}
-   buddy.hide();buddyPosition=undefined;return;
+   if(!guidePoint){buddy.hide();buddyPosition=undefined;return;}
   }
   const a=screen.getDisplayNearestPoint(guidePoint||p).workArea;
   const phase=gesturePath?Math.min(1,((performance.now()-gesturePath.started)%2200)/1500):0;

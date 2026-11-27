@@ -73,6 +73,7 @@ test('cursor-first session: full recording, role isolation, Alt+L context, live 
   const c=student.application.windows().find(p=>p.url().endsWith('/chat.html'));
   await expect.poll(()=>s.evaluate(()=>window.lighthouse.state().then(s=>({triggered:s.hotkeyAt>0,error:s.chatError})))).toEqual({triggered:true,error:''});
   await expect.poll(()=>student.application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Chat').isVisible())).toBe(true);
+  await expect.poll(()=>student.application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Buddy').isVisible())).toBe(false);
   await expect(c.locator('#context')).toHaveText('LighthouseFixture');await expect(c.locator('#question')).toBeFocused();
   await expect(c.locator('body')).toHaveClass(/compact/);
   await expect(c.locator('.reply-card')).toBeHidden();
@@ -88,7 +89,7 @@ test('cursor-first session: full recording, role isolation, Alt+L context, live 
   await expect(c.locator('.target-found')).toBeVisible({timeout:70000});if(process.env.LIGHTHOUSE_E2E_URL)await expect(c.locator('.message.assistant').last()).toHaveAttribute('data-source','ai');
   if(process.env.LIGHTHOUSE_E2E_URL){expect(Number(await c.locator('.message.assistant').last().getAttribute('data-deltas'))).toBeGreaterThan(0);await expect(c.locator('.message.assistant').last()).toHaveAttribute('data-streaming','false');}
   await expect.poll(()=>s.evaluate(()=>window.lighthouse.state().then(s=>!!s.guidePoint))).toBe(true);
-  await expect.poll(()=>student.application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Buddy').isVisible())).toBe(false);
+  await expect.poll(()=>student.application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Buddy').isVisible())).toBe(true);
   expect(await student.application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Lighthouse Highlight').isVisible())).toBe(false);
 
   await c.screenshot({path:'test-results/cursor-chat.png'});await bar.screenshot({path:'test-results/recorder-toolbar.png'});

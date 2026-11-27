@@ -93,7 +93,9 @@ class Bridge {
   }
   static void Emit(string kind,AutomationElement e,string direction,object motion=null,int scrollDelta=0,string key=null,string[] modifiers=null,string button="left") {
     if(e==null || !InWindow(e))return;
-    var t=Target(e); if((string)t["automationId"]=="" && (string)t["name"]=="")return;
+    var t=Target(e);
+    if((string)t["automationId"]=="" && (string)t["name"]=="" && (string)t["controlType"]=="Document"){t["automationId"]="__document__";t["name"]="Canvas";}
+    if((string)t["automationId"]=="" && (string)t["name"]=="")return;
     var now=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     if(kind=="click") {
       string signature=ProcessName(Window)+Json.Serialize(t);
@@ -184,7 +186,7 @@ class Bridge {
             element=TreeWalker.ControlViewWalker.GetParent(element);
           if(drag){
             Stroke.Add(finish);
-            while(element!=null&&(!Stroke.TrueForAll(pt=>element.Current.BoundingRectangle.Contains(pt.x,pt.y))||(element.Current.AutomationId==""&&element.Current.Name=="")))element=TreeWalker.ControlViewWalker.GetParent(element);
+            while(element!=null&&(!Stroke.TrueForAll(pt=>element.Current.BoundingRectangle.Contains(pt.x,pt.y))||(element.Current.AutomationId==""&&element.Current.Name==""&&element.Current.ControlType!=ControlType.Document)))element=TreeWalker.ControlViewWalker.GetParent(element);
             if(element==null||!InWindow(element))continue;var b=element.Current.BoundingRectangle;if(b.Width<=0||b.Height<=0)continue;
             var points=new List<double[]>();foreach(var pt in Stroke)points.Add(new double[]{(pt.x-b.X)/b.Width,(pt.y-b.Y)/b.Height});
             motion=new {points=points,start=new double[]{(p.x-b.X)/b.Width,(p.y-b.Y)/b.Height},end=new double[]{(finish.x-b.X)/b.Width,(finish.y-b.Y)/b.Height}};
@@ -218,6 +220,18 @@ class Bridge {
   static AutomationElement Locate(Dictionary<string,string> t,out string strategy) {
     var root=AutomationElement.FromHandle(Window);
     var all=root.FindAll(TreeScope.Descendants,Condition.TrueCondition);
+    if(t["automationId"]=="__document__" && t["controlType"]=="Document") {
+      AutomationElement best=null;double bestArea=0;
+      foreach(AutomationElement e in all) {
+        try {
+          var c=e.Current;if(c.IsOffscreen || c.IsPassword || c.ControlType!=ControlType.Document)continue;
+          var b=c.BoundingRectangle;double area=b.Width*b.Height;
+          if(b.Width>0 && b.Height>0 && area>bestArea){best=e;bestArea=area;}
+        } catch {}
+      }
+      strategy=best!=null?"document-viewport":null;
+      return best;
+    }
     var ids=new List<AutomationElement>();var names=new List<AutomationElement>();
     foreach(AutomationElement e in all) {
       try {
