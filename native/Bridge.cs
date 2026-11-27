@@ -30,6 +30,9 @@ class Bridge {
   [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
   [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h,int nCmdShow);
+  [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+  [StructLayout(LayoutKind.Sequential)] struct Rect {public int left,top,right,bottom;}
+  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h,out Rect r);
   [DllImport("user32.dll")] static extern bool AttachThreadInput(uint idAttach,uint idAttachTo,bool fAttach);
   [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
   [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point point);
@@ -54,6 +57,10 @@ class Bridge {
   static InputQueue<Tuple<IntPtr,string,string[]>> Shortcuts=new InputQueue<Tuple<IntPtr,string,string[]>>();
   static string[] Modifiers(){var list=new List<string>();if((GetAsyncKeyState(17)&0x8000)!=0)list.Add("Control");if((GetAsyncKeyState(16)&0x8000)!=0)list.Add("Shift");if((GetAsyncKeyState(18)&0x8000)!=0)list.Add("Alt");if((GetAsyncKeyState(32)&0x8000)!=0)list.Add("Space");return list.ToArray();}
   static bool RecordAll;
+  static bool HasDisplayBounds;
+  static int DisplayX,DisplayY,DisplayW,DisplayH;
+  static bool InSelectedDisplay(Point p){return !HasDisplayBounds||(p.x>=DisplayX&&p.x<DisplayX+DisplayW&&p.y>=DisplayY&&p.y<DisplayY+DisplayH);}
+  static bool WindowInSelectedDisplay(IntPtr h){if(!HasDisplayBounds)return true;Rect r;if(!GetWindowRect(h,out r))return false;int cx=(r.left+r.right)/2,cy=(r.top+r.bottom)/2;return cx>=DisplayX&&cx<DisplayX+DisplayW&&cy>=DisplayY&&cy<DisplayY+DisplayH;}
   static volatile bool StopRequested;
   static Dictionary<long,Dictionary<string,object>> Prior=new Dictionary<long,Dictionary<string,object>>();
   static List<Tuple<long,IntPtr,Dictionary<string,object>>> Enrich=new List<Tuple<long,IntPtr,Dictionary<string,object>>>();
@@ -126,7 +133,7 @@ class Bridge {
     if(code>=0 && (move || m==0x201 || m==0x202 || m==0x204 || m==0x205 || m==0x207 || m==0x208 || m==0x20A)) {
       var value=(MouseData)Marshal.PtrToStructure(data,typeof(MouseData));
       var root=GetAncestor(WindowFromPoint(value.point),2);
-      if(!StopRequested && Pending.Count<200 && (RecordAll?Allowed(root):root==Window))Pending.Enqueue(Tuple.Create(m,value,root));
+      if(!StopRequested && Pending.Count<200 && (!RecordAll || InSelectedDisplay(value.point)) && (RecordAll?Allowed(root):root==Window))Pending.Enqueue(Tuple.Create(m,value,root));
     }
     if(m==0x202||m==0x208)MouseHeld=false;
     return CallNextHookEx(Hook,code,message,data);
@@ -145,13 +152,13 @@ class Bridge {
   static IntPtr OnRecordKey(int code,IntPtr message,IntPtr data){
     if(code>=0&&!StopRequested&&(message.ToInt32()==0x100||message.ToInt32()==0x104)){
       int key=Marshal.ReadInt32(data);var h=GetForegroundWindow();
-      if((RecordAll?Allowed(h):h==Window)&&Shortcuts.Count<50){
+      if((RecordAll?(Allowed(h)&&WindowInSelectedDisplay(h)):h==Window)&&Shortcuts.Count<50){
         bool command=(GetAsyncKeyState(17)&0x8000)!=0||(GetAsyncKeyState(18)&0x8000)!=0;
         bool ownShortcut=(GetAsyncKeyState(18)&0x8000)!=0&&(key==71||key==72||key==76||((GetAsyncKeyState(16)&0x8000)!=0&&(key==82||key==83||key==79||key==75)));
         string keyName=key==46?"Delete":key==27?"Escape":key==9?"Tab":key==13?"Enter":key>=112&&key<=123?"F"+(key-111):command&&key>=65&&key<=90?((char)key).ToString():null;
         if(!ownShortcut&&keyName!=null)Shortcuts.Enqueue(Tuple.Create(h,keyName,Modifiers()));
       }
-      if((key==8||key==32||(key>=0x30&&key<=0x5A)||(key>=186&&key<=222))&&(GetAsyncKeyState(17)&0x8000)==0&&(GetAsyncKeyState(18)&0x8000)==0&&(RecordAll?Allowed(h):h==Window)){
+      if((key==8||key==32||(key>=0x30&&key<=0x5A)||(key>=186&&key<=222))&&(GetAsyncKeyState(17)&0x8000)==0&&(GetAsyncKeyState(18)&0x8000)==0&&(RecordAll?(Allowed(h)&&WindowInSelectedDisplay(h)):h==Window)){
         long now=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         if(now-LastTyped>800&&TypedPending.Count<100)TypedPending.Enqueue(h);
         LastTyped=now;
@@ -336,7 +343,19 @@ class Bridge {
         Write(new {focused=ok,foreground=GetForegroundWindow().ToInt64().ToString()});
         return;
       }
-      if(args[0]=="record-all") {RecordAll=true;Record();return;}
+      if(args[0]=="bring-front" && args.Length>1) {
+        var targetHwnd=new IntPtr(long.Parse(args[1]));
+        if(IsIconic(targetHwnd))ShowWindow(targetHwnd,9);
+        else ShowWindow(targetHwnd,5);
+        BringWindowToTop(targetHwnd);
+        SetForegroundWindow(targetHwnd);
+        Write(new {ok=true});
+        return;
+      }
+      if(args[0]=="record-all") {
+        if(args.Length>=5){HasDisplayBounds=true;DisplayX=int.Parse(args[1]);DisplayY=int.Parse(args[2]);DisplayW=int.Parse(args[3]);DisplayH=int.Parse(args[4]);}
+        RecordAll=true;Record();return;
+      }
       if(args[0]=="windows") {
         var rows=new List<object>();
         EnumWindows((h,p)=>{try{string title=Title(h),process=ProcessName(h);if(IsWindowVisible(h) && title!="" && process!="Lighthouse" && process!="electron") rows.Add(new {handle=h.ToInt64().ToString(),title=title,process=process});}catch{}return true;},IntPtr.Zero);

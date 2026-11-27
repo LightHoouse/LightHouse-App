@@ -18,3 +18,5 @@
 .version-card{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:20px 0;padding:14px 15px;border:1px solid #e2e6ed;border-radius:13px;background:#fff}.version-card strong{font-size:12px}.version-card p{margin:4px 0 0}.version-card .compact-action{flex-shrink:0}
 
 .archive-actions{display:flex;gap:10px;margin:22px 0 12px}.archive-actions .primary,.archive-actions .secondary{justify-content:center;flex:1}.recording-open{background:transparent;text-align:left;flex:1;min-width:0;color:inherit;padding:4px}.recording-open strong{font-size:14px}.recording-meta{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:8px;color:#738095;font-size:11px}.recording-meta span+span{border-left:1px solid #dce2eb;padding-left:12px}.recording-hint{display:block;font-size:11px;color:#516b95;margin-top:12px}.recording-card{padding:16px;align-items:center}.recording-card>.danger{padding:8px}.recording-open:hover .recording-hint{text-decoration:underline}
+
+.display-select{max-width:165px;height:20px;margin-top:2px;padding:0 4px;border:1px solid #d5dce6;border-radius:6px;background:#fff;color:#415064;font:500 10px/1 'DM Sans',sans-serif;cursor:pointer}
