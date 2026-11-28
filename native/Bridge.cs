@@ -34,6 +34,7 @@ class Bridge {
   [StructLayout(LayoutKind.Sequential)] struct Rect {public int left,top,right,bottom;}
   [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h,out Rect r);
   [DllImport("user32.dll")] static extern bool AttachThreadInput(uint idAttach,uint idAttachTo,bool fAttach);
+  [DllImport("user32.dll")] static extern bool AllowSetForegroundWindow(int dwProcessId);
   [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
   [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point point);
   [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h,uint flags);
@@ -142,7 +143,7 @@ class Bridge {
     if(code>=0 && Marshal.ReadInt32(data)==0x4C) {
       int m=message.ToInt32();
       if((m==0x100 || m==0x104) && (GetAsyncKeyState(0x12)&0x8000)!=0) {
-        if(!ShortcutDown){ShortcutDown=true;var h=GetForegroundWindow();Write(new {kind="hotkey",context=Allowed(h)?new {handle=h.ToInt64().ToString(),title=Title(h),process=ProcessName(h)}:null});}
+        if(!ShortcutDown){ShortcutDown=true;AllowSetForegroundWindow(-1);var h=GetForegroundWindow();Write(new {kind="hotkey",context=Allowed(h)?new {handle=h.ToInt64().ToString(),title=Title(h),process=ProcessName(h)}:null});}
         return new IntPtr(1);
       }
       if((m==0x101 || m==0x105) && ShortcutDown){ShortcutDown=false;return new IntPtr(1);}

@@ -141,7 +141,7 @@ async function openChat(capturedContext?:WindowInfo){
 function syncRole(){
  globalShortcut.unregisterAll();shortcutHelper?.kill();shortcutHelper=undefined;hotkey=false;
  if(session?.role==='student'){
-  if(globalShortcut.register('Alt+L',()=>{if(Date.now()-hotkeyAt<400)return;hotkeyAt=Date.now();void openChat().catch(error=>{chatError=error.message;update();});})){hotkey=true;}else{
+  if(process.platform!=='win32'&&globalShortcut.register('Alt+L',()=>{if(Date.now()-hotkeyAt<400)return;hotkeyAt=Date.now();void openChat().catch(error=>{chatError=error.message;update();});})){hotkey=true;}else{
   const child=spawn(nativePath(),['hotkey'],{windowsHide:true,stdio:['ignore','pipe','pipe']});shortcutHelper=child;
   createInterface({input:child.stdout!}).on('line',line=>{try{const row=JSON.parse(line.replace(/^\uFEFF/,''));if(row.kind==='ready'){hotkey=true;const row=shortcutRows.find(r=>r.key===keyLabel('Alt+L'));if(row)row.available=true;update();}if(row.kind==='hotkey'){hotkeyAt=Date.now();void openChat(row.context||undefined).catch(error=>{chatError=error.message;update();});}}catch{}});
   child.on('error',()=>{hotkey=false;update();});child.on('exit',()=>{if(shortcutHelper===child){hotkey=false;update();}});
