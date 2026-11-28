@@ -124,7 +124,7 @@ function setupShortcuts(){
  if(session?.role==='student'){shortcutRows.push({key:keyLabel('Alt+L'),label:'Buka / tutup pertanyaan',available:hotkey},{key:keyLabel('Alt+↑ / ↓'),label:'Gulir riwayat sesi chat',available:true});}
  shortcutRows.push({key:'Enter',label:'Kirim pertanyaan (di chat)'},{key:'Esc',label:'Tutup chat / batalkan penunjuk'});
 }
-function forceFocusChat(){if(!chat||chat.isDestroyed()||!chat.isVisible())return;try{const buf=chat.getNativeWindowHandle();const hwnd=buf.length>=8?buf.readBigInt64LE(0).toString():String(buf.readInt32LE(0));execFileSync(nativePath(),['focus-window',hwnd],{windowsHide:true,timeout:1500});}catch{}chat.focus();chat.webContents.focus();}
+function forceFocusChat(){if(!chat||chat.isDestroyed()||!chat.isVisible())return;chat.moveTop();chat.focus();chat.webContents.focus();if(!chat.isFocused()){try{const buf=chat.getNativeWindowHandle();const hwnd=buf.length>=8?buf.readBigInt64LE(0).toString():String(buf.readInt32LE(0));void execute(nativePath(),['focus-window',hwnd],{windowsHide:true,timeout:1500}).then(()=>{if(chat&&!chat.isDestroyed()&&chat.isVisible()){chat.focus();chat.webContents.focus();}}).catch(()=>{});}catch{}}}
 async function openChat(capturedContext?:WindowInfo){
  if(!session){showPanel();return;}if(session.role!=='student'){showPanel();return;}if(chat.isVisible()){hideChat();return;}
  const pointer=screen.getCursorScreenPoint();
@@ -141,7 +141,7 @@ async function openChat(capturedContext?:WindowInfo){
 function syncRole(){
  globalShortcut.unregisterAll();shortcutHelper?.kill();shortcutHelper=undefined;hotkey=false;
  if(session?.role==='student'){
-  if(globalShortcut.register('Alt+L',()=>{hotkeyAt=Date.now();void openChat().catch(error=>{chatError=error.message;update();});})){hotkey=true;}else{
+  if(globalShortcut.register('Alt+L',()=>{if(Date.now()-hotkeyAt<400)return;hotkeyAt=Date.now();void openChat().catch(error=>{chatError=error.message;update();});})){hotkey=true;}else{
   const child=spawn(nativePath(),['hotkey'],{windowsHide:true,stdio:['ignore','pipe','pipe']});shortcutHelper=child;
   createInterface({input:child.stdout!}).on('line',line=>{try{const row=JSON.parse(line.replace(/^\uFEFF/,''));if(row.kind==='ready'){hotkey=true;const row=shortcutRows.find(r=>r.key===keyLabel('Alt+L'));if(row)row.available=true;update();}if(row.kind==='hotkey'){hotkeyAt=Date.now();void openChat(row.context||undefined).catch(error=>{chatError=error.message;update();});}}catch{}});
   child.on('error',()=>{hotkey=false;update();});child.on('exit',()=>{if(shortcutHelper===child){hotkey=false;update();}});
