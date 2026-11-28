@@ -1,9 +1,14 @@
 $ErrorActionPreference = 'Stop'
-$installer = Get-ChildItem release -Filter '*.exe' | Select-Object -First 1
+Get-Process Lighthouse,LighthouseBridge -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep -Milliseconds 500
+$installer = Get-ChildItem release -Filter 'Lighthouse*Setup*.exe' | Select-Object -First 1
+if (-not $installer) { throw 'Installer executable not found in release/' }
 $installDir = Join-Path $env:RUNNER_TEMP 'Lighthouse-install-check'
-Start-Process -FilePath $installer.FullName -ArgumentList @('/S', "/D=$installDir") -Wait -WindowStyle Hidden
+if (Test-Path -LiteralPath $installDir) { Remove-Item -Recurse -Force -LiteralPath $installDir }
+$proc = Start-Process -FilePath $installer.FullName -ArgumentList @('/S', "/D=$installDir") -Wait -PassThru -WindowStyle Hidden
 $exe = Join-Path $installDir 'Lighthouse.exe'
-if (-not (Test-Path -LiteralPath $exe)) { throw 'Installed executable missing' }
+for ($i = 0; $i -lt 30 -and -not (Test-Path -LiteralPath $exe); $i++) { Start-Sleep -Milliseconds 500 }
+if (-not (Test-Path -LiteralPath $exe)) { throw "Installed executable missing (installer=$($installer.Name), exit=$($proc.ExitCode))" }
 $progId = (Get-Item 'Registry::HKEY_CURRENT_USER\Software\Classes\.lighthouse').GetValue('')
 if (-not $progId) { throw 'Missing recording ProgID' }
 $key = "Registry::HKEY_CURRENT_USER\Software\Classes\$progId"
