@@ -267,9 +267,11 @@ class Bridge {
   static Dictionary<string,string> DecodeTarget(string data){return Json.Deserialize<Dictionary<string,string>>(Encoding.UTF8.GetString(Convert.FromBase64String(data)));}
   static void Resolve(string data){
     string strategy;var found=Locate(DecodeTarget(data),out strategy);
-    if(found==null){Write(new {resolved=false,reason="Target tidak terlihat atau ambigu."});return;}
+    Rect wr;bool hasWr=GetWindowRect(Window,out wr);
+    object winBounds=hasWr?new {x=wr.left,y=wr.top,width=wr.right-wr.left,height=wr.bottom-wr.top}:null;
+    if(found==null){Write(new {resolved=false,reason="Target tidak terlihat atau ambigu.",windowBounds=winBounds});return;}
     var r=found.Current.BoundingRectangle;
-    Write(new {resolved=true,strategy=strategy,bounds=new {x=r.X,y=r.Y,width=r.Width,height=r.Height}});
+    Write(new {resolved=true,strategy=strategy,bounds=new {x=r.X,y=r.Y,width=r.Width,height=r.Height},windowBounds=winBounds});
   }
   static bool MatchesModifiers(Dictionary<string,object> gesture){
     if(gesture==null||!gesture.ContainsKey("modifiers"))return true;
@@ -280,8 +282,15 @@ class Bridge {
     var gesture=gestureData==null?null:Json.Deserialize<Dictionary<string,object>>(Encoding.UTF8.GetString(Convert.FromBase64String(gestureData)));
     Point? dragStart=null;int pathProgress=0;
     var target=DecodeTarget(data);string strategy;var element=Locate(target,out strategy);
-    if(element==null)throw new Exception("Target missing");
-    var bounds=element.Current.BoundingRectangle;
+    var bboxNorm=gesture!=null&&gesture.ContainsKey("bboxNorm")?gesture["bboxNorm"] as System.Collections.ArrayList:null;
+    bool useBbox=element==null||(strategy=="document-viewport"&&action!="dragDrop"&&action!="scroll"&&bboxNorm!=null&&bboxNorm.Count==4);
+    System.Windows.Rect bounds;
+    if(!useBbox){bounds=element.Current.BoundingRectangle;}
+    else if(bboxNorm!=null&&bboxNorm.Count==4){
+      Rect wr;if(!GetWindowRect(Window,out wr)||wr.right<=wr.left||wr.bottom<=wr.top)throw new Exception("Target missing");
+      double nx=Convert.ToDouble(bboxNorm[0]),ny=Convert.ToDouble(bboxNorm[1]),nw=Convert.ToDouble(bboxNorm[2]),nh=Convert.ToDouble(bboxNorm[3]);
+      bounds=new System.Windows.Rect(wr.left+nx*(wr.right-wr.left),wr.top+ny*(wr.bottom-wr.top),Math.Max(24,nw*(wr.right-wr.left)),Math.Max(24,nh*(wr.bottom-wr.top)));
+    } else {throw new Exception("Target missing");}
     Hook=SetWindowsHookEx(14,Callback,GetModuleHandle(null),0);
     if(action=="keypress")KeyboardHook=SetWindowsHookEx(13,RecordKeyCallback,GetModuleHandle(null),0);
     if(Hook==IntPtr.Zero||(action=="keypress"&&KeyboardHook==IntPtr.Zero))throw new Exception("Input observer unavailable");
@@ -308,6 +317,14 @@ class Bridge {
           if(completed){Write(new {kind=action=="scroll"||action=="dragDrop"||action=="keypress"?"gesture-completed":"target-clicked"});Application.ExitThread();return;}
         }
         if(!IsWindowVisible(Window)){Write(new {kind="target-lost"});Application.ExitThread();return;}
+        if(useBbox&&bboxNorm!=null&&bboxNorm.Count==4){
+          Rect wr;if(!GetWindowRect(Window,out wr)||wr.right<=wr.left||wr.bottom<=wr.top){if(++misses>=10){Write(new {kind="target-lost"});Application.ExitThread();}return;}
+          misses=0;
+          double nx=Convert.ToDouble(bboxNorm[0]),ny=Convert.ToDouble(bboxNorm[1]),nw=Convert.ToDouble(bboxNorm[2]),nh=Convert.ToDouble(bboxNorm[3]);
+          bounds=new System.Windows.Rect(wr.left+nx*(wr.right-wr.left),wr.top+ny*(wr.bottom-wr.top),Math.Max(24,nw*(wr.right-wr.left)),Math.Max(24,nh*(wr.bottom-wr.top)));
+          Write(new {kind="target-position",bounds=new {x=bounds.X,y=bounds.Y,width=bounds.Width,height=bounds.Height}});
+          return;
+        }
         element=Locate(target,out strategy);
         if(element==null){if(++misses>=10){Write(new {kind="target-lost"});Application.ExitThread();}return;}
         misses=0;bounds=element.Current.BoundingRectangle;

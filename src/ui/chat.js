@@ -26,6 +26,7 @@ async function advanceStep() {
     const guided = await api.guide({next: true});
     if (guided && guided.done) {
       message('Selesai! Semua langkah dari asisten sudah diikuti.', 'assistant');
+      setTimeout(() => { if (!busy) void api.hideChat(); }, 1800);
     } else if (guided && guided.resolved) {
       const row = message(guided.instruction || guided.message || 'Ikuti kursor biru untuk langkah berikutnya.', 'assistant');
       const label = document.createElement('span'); label.className = 'target-found'; label.textContent = targetHint(guided); row.append(label);
